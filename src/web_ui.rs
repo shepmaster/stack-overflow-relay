@@ -1,18 +1,25 @@
 use crate::{GlobalConfig, GlobalStackOverflowConfig};
-use http::{header, StatusCode};
 use snafu::Snafu;
 use std::convert::Infallible;
-use tracing::error;
-use warp::{reply, Filter, Rejection, Reply};
+use tracing::{error, info};
+use warp::{
+    http::{header, StatusCode},
+    reply, Filter, Rejection, Reply,
+};
 
-pub(crate) async fn serve(config: GlobalConfig, so_config: GlobalStackOverflowConfig) {
-    let oauth = oauth::routes(config, so_config);
+pub(crate) async fn serve(
+    config: GlobalConfig,
+    so_config: GlobalStackOverflowConfig,
+    register_flow: crate::flow::RegisterFlow,
+) {
+    let oauth = oauth::routes(config, so_config, register_flow);
 
     let root = warp::path::end().map(|| warp::reply::html(html::root().into_string()));
 
     let routes = oauth.or(root);
     let routes = routes.recover(report_invalid);
 
+    info!("Starting web server at {}", &config.listen_address);
     warp::serve(routes).run(config.listen_address).await
 }
 
@@ -40,7 +47,7 @@ async fn report_invalid(r: Rejection) -> Result<impl Reply, Infallible> {
                 StatusCode::BAD_REQUEST,
             )),
             UnableToGetOauthEntryUrl { .. }
-            | UnableToGetOauthAccessToken { .. }
+            | UnableToCompleteRegistration { .. }
             | UnableToBuildRedirectUri { .. } => {
                 error!("Unhandled web UI error: {}", e);
                 internal()
@@ -56,11 +63,11 @@ async fn report_invalid(r: Rejection) -> Result<impl Reply, Infallible> {
 enum Error {
     StateParameterMismatch,
 
-    UnableToGetOauthEntryUrl {
-        source: crate::stack_overflow::Error,
+    UnableToCompleteRegistration {
+        source: crate::flow::Error,
     },
 
-    UnableToGetOauthAccessToken {
+    UnableToGetOauthEntryUrl {
         source: crate::stack_overflow::Error,
     },
 
@@ -82,7 +89,7 @@ impl From<Error> for warp::Rejection {
 mod oauth {
     use super::{
         redirect_to, Result, StateParameterMismatch, UnableToBuildRedirectUri,
-        UnableToGetOauthAccessToken, UnableToGetOauthEntryUrl,
+        UnableToCompleteRegistration, UnableToGetOauthEntryUrl,
     };
     use crate::{GlobalConfig, GlobalStackOverflowConfig};
     use once_cell::sync::Lazy;
@@ -103,9 +110,10 @@ mod oauth {
     pub(crate) fn routes(
         config: GlobalConfig,
         so_config: GlobalStackOverflowConfig,
+        register_flow: crate::flow::RegisterFlow,
     ) -> BoxedFilter<(impl warp::Reply,)> {
         warp::path!("oauth" / "stackoverflow" / ..)
-            .and(begin(config, so_config).or(complete(config)))
+            .and(begin(config, so_config).or(complete(config, register_flow)))
             .boxed()
     }
 
@@ -137,30 +145,23 @@ mod oauth {
         state: String,
     }
 
-    fn complete(config: GlobalConfig) -> BoxedFilter<(impl warp::Reply,)> {
+    fn complete(
+        config: GlobalConfig,
+        flow: crate::flow::RegisterFlow,
+    ) -> BoxedFilter<(impl warp::Reply,)> {
         warp::path("complete")
             .and(query::query())
             .and_then(move |params: CompleteParams| {
+                let mut flow = flow.clone();
                 async move {
                     let expected_state = mem::take(&mut *OAUTH_STATE.lock());
-
                     ensure!(params.state == expected_state, StateParameterMismatch);
 
                     let redirect_uri = redirect_uri(config)?.to_string();
 
-                    let req = crate::stack_overflow::AccessTokenRequest {
-                        client_id: &*config.stack_overflow_client_id,
-                        client_secret: &*config.stack_overflow_client_secret,
-                        code: &*params.code,
-                        redirect_uri: &*redirect_uri,
-                    };
-
-                    let resp = crate::stack_overflow::get_access_token(&req)
+                    flow.register(&params.code, &redirect_uri)
                         .await
-                        .context(UnableToGetOauthAccessToken)?;
-
-                    dbg!(&resp);
-                    // what do we persist?
+                        .context(UnableToCompleteRegistration)?;
 
                     Ok::<_, warp::Rejection>(redirect_to(config.public_uri.to_string()))
                 }

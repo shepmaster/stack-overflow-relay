@@ -153,7 +153,7 @@ impl Config {
             OAUTH_ENTRY_URI,
             &[
                 ("client_id", &*self.client_id),
-                ("scope", "read_inbox"),
+                ("scope", "read_inbox,no_expiry"),
                 ("redirect_uri", redirect_uri),
                 ("state", state),
             ],
@@ -173,7 +173,7 @@ pub struct AccessTokenRequest<'a> {
 #[derive(Debug, Deserialize)]
 pub struct AccessTokenResponse {
     pub access_token: AccessToken,
-    pub expires: Duration,
+    pub expires: Option<Duration>,
 }
 
 #[derive(Debug, Serialize)]

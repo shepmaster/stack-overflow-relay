@@ -19,7 +19,7 @@ serde = { version = "1.0.117", default-features = false }
 serde_urlencoded = { version = "0.7.0", default-features = false }
 snafu = { version = "0.6.10", default-features = false, features = ["std"] }
 tokio = { version = "0.2.23", default-features = false, features = ["macros", "blocking", "rt-threaded"] }
-tracing = { version = "0.1.22", default-features = false }
+tracing = { version = "0.1.22", default-features = false, features = ["attributes"] }
 tracing-subscriber = { version = "0.2.15", default-features = true }
 url = { version = "2.2.0", default-features = false }
 warp = { version = "0.2.5", default-features = false }

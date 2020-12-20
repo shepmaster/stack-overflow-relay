@@ -35,8 +35,8 @@ async fn core() -> Result<()> {
     let config = Config::from_environment().context(UnableToConfigure)?;
     let config = Box::leak(Box::new(config));
 
-    let so_config = stack_overflow::Config::new(config.stack_overflow_client_id.clone())
-        .context(UnableToConfigureStackOverflow)?;
+    let so_config =
+        stack_overflow::Config::from_environment().context(UnableToConfigureStackOverflow)?;
     let so_config = Box::leak(Box::new(so_config));
 
     let database_url = &config.database_url;
@@ -46,13 +46,10 @@ async fn core() -> Result<()> {
 
     let notify_flow = flow::NotifyFlow::new(db.clone());
 
-    let (poll_spawner, poll_spawner_task) = poll_spawner::spawn(poll_spawner::PollSpawner::new(
-        config,
-        so_config,
-        notify_flow,
-    ));
+    let (poll_spawner, poll_spawner_task) =
+        poll_spawner::spawn(poll_spawner::PollSpawner::new(so_config, notify_flow));
 
-    let register_flow = flow::RegisterFlow::new(config, so_config, db, poll_spawner.clone());
+    let register_flow = flow::RegisterFlow::new(so_config, db, poll_spawner.clone());
 
     let web_ui = tokio::spawn(web_ui::serve(config, so_config, register_flow));
 

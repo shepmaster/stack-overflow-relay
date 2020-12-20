@@ -10,9 +10,6 @@ pub struct Config {
     pub database_url: String,
     pub public_uri: Url,
     pub listen_address: SocketAddr,
-    pub stack_overflow_client_id: String,
-    pub stack_overflow_client_secret: String,
-    pub stack_overflow_client_key: String,
 }
 
 impl Config {
@@ -21,12 +18,6 @@ impl Config {
         let uri = env::var("WEB_PUBLIC_URI").context(UnknownWebPublicUri)?;
         let address = env::var("WEB_LISTEN_ADDRESS").context(UnknownWebListenAddress)?;
         let port = env::var("WEB_LISTEN_PORT").context(UnknownWebListenPort)?;
-        let stack_overflow_client_id =
-            env::var("STACK_OVERFLOW_CLIENT_ID").context(UnknownStackOverflowClientId)?;
-        let stack_overflow_client_secret =
-            env::var("STACK_OVERFLOW_CLIENT_SECRET").context(UnknownStackOverflowClientSecret)?;
-        let stack_overflow_client_key =
-            env::var("STACK_OVERFLOW_CLIENT_KEY").context(UnknownStackOverflowClientKey)?;
 
         let public_uri = Url::parse(&uri).context(InvalidWebPublicUri { uri })?;
         let address: IpAddr = address
@@ -39,9 +30,6 @@ impl Config {
             database_url,
             public_uri,
             listen_address,
-            stack_overflow_client_id,
-            stack_overflow_client_secret,
-            stack_overflow_client_key,
         })
     }
 }
@@ -77,15 +65,6 @@ pub enum Error {
         source: url::ParseError,
         uri: String,
     },
-
-    #[snafu(display("STACK_OVERFLOW_CLIENT_ID must be set"))]
-    UnknownStackOverflowClientId { source: env::VarError },
-
-    #[snafu(display("STACK_OVERFLOW_CLIENT_SECRET must be set"))]
-    UnknownStackOverflowClientSecret { source: env::VarError },
-
-    #[snafu(display("STACK_OVERFLOW_CLIENT_KEY must be set"))]
-    UnknownStackOverflowClientKey { source: env::VarError },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;

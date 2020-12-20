@@ -1,7 +1,7 @@
 use crate::{
     flow::NotifyFlow,
-    stack_overflow::{self, AccessToken, AccountId, UnreadParams},
-    GlobalConfig, GlobalStackOverflowConfig,
+    stack_overflow::{self, AccessToken, AccountId},
+    GlobalStackOverflowConfig,
 };
 use futures::{
     channel::{mpsc, oneshot},
@@ -14,7 +14,6 @@ use tracing::{trace, trace_span, warn, Instrument};
 
 #[derive(Debug)]
 pub struct PollSpawner {
-    config: GlobalConfig,
     so_config: GlobalStackOverflowConfig,
     pollers: HashMap<AccountId, RemoteHandle<()>>,
     flow: NotifyFlow,
@@ -22,13 +21,8 @@ pub struct PollSpawner {
 
 // Not part of actor API
 impl PollSpawner {
-    pub fn new(
-        config: GlobalConfig,
-        so_config: GlobalStackOverflowConfig,
-        flow: NotifyFlow,
-    ) -> Self {
+    pub fn new(so_config: GlobalStackOverflowConfig, flow: NotifyFlow) -> Self {
         Self {
-            config,
             so_config,
             pollers: Default::default(),
             flow,
@@ -44,7 +38,6 @@ impl PollSpawner {
         trace!("Starting new polling task");
 
         let Self {
-            config,
             so_config,
             pollers,
             flow,
@@ -54,8 +47,7 @@ impl PollSpawner {
         // `handle` is dropped, which will happen if we replace
         // the hashmap entry for the same account.
         let (work, handle) =
-            poll_one_account(config, so_config, account_id, access_token, flow.clone())
-                .remote_handle();
+            poll_one_account(so_config, account_id, access_token, flow.clone()).remote_handle();
         tokio::spawn(work);
         let old_work = pollers.insert(account_id, handle);
 
@@ -68,7 +60,6 @@ impl PollSpawner {
 }
 
 async fn poll_one_account(
-    config: GlobalConfig,
     so_config: GlobalStackOverflowConfig,
     account_id: AccountId,
     access_token: AccessToken,
@@ -78,18 +69,11 @@ async fn poll_one_account(
     async {
         trace!("Starting polling");
 
-        let params = UnreadParams {
-            key: &config.stack_overflow_client_key,
-            site: "stackoverflow",
-            access_token: &access_token,
-            filter: "default",
-        };
+        let so_client = stack_overflow::AuthClient::new(so_config.clone(), access_token);
 
-        let r = stack_overflow::unread_notifications(so_config, &params).await;
-        dbg!(&r);
+        let r = dbg!(so_client.unread_notifications().await).expect("TODO");
 
-        let r = r.expect("TODO").into_result().expect("TODO");
-        let r = r.items.into_iter().map(|n| (account_id, n.body)).collect();
+        let r = r.into_iter().map(|n| (account_id, n.body)).collect();
 
         flow.notify(r).await.expect("TODO");
     }

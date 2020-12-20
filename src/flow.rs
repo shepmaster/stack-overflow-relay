@@ -1,12 +1,11 @@
 use crate::{
-    database::DbHandle, domain::AccountId, poll_spawner::PollSpawnerHandle, GlobalConfig,
+    database::DbHandle, domain::AccountId, poll_spawner::PollSpawnerHandle,
     GlobalStackOverflowConfig,
 };
 use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Clone)]
 pub struct RegisterFlow {
-    config: GlobalConfig,
     so_config: GlobalStackOverflowConfig,
     db: DbHandle,
     poll_spawner: PollSpawnerHandle,
@@ -14,13 +13,11 @@ pub struct RegisterFlow {
 
 impl RegisterFlow {
     pub fn new(
-        config: GlobalConfig,
         so_config: GlobalStackOverflowConfig,
         db: DbHandle,
         poll_spawner: PollSpawnerHandle,
     ) -> Self {
         Self {
-            config,
             so_config,
             db,
             poll_spawner,
@@ -29,39 +26,26 @@ impl RegisterFlow {
 
     pub async fn register(&mut self, code: &str, redirect_uri: &str) -> Result<()> {
         let Self {
-            config,
             so_config,
             db,
             poll_spawner,
         } = self;
 
-        let req = crate::stack_overflow::AccessTokenRequest {
-            client_id: &config.stack_overflow_client_id,
-            client_secret: &config.stack_overflow_client_secret,
-            code,
-            redirect_uri,
-        };
-        let resp = crate::stack_overflow::get_access_token(&req)
+        let so_client = so_config.clone().into_unauth_client();
+        let resp = so_client
+            .get_access_token(code, redirect_uri)
             .await
             .context(UnableToGetOauthAccessToken)?;
 
-        dbg!(&resp);
+        let so_client = so_client.into_auth_client(resp);
 
-        let access_token = resp.access_token;
-
-        let req = crate::stack_overflow::CurrentUserParams {
-            key: &config.stack_overflow_client_key,
-            site: "stackoverflow",
-            access_token: &access_token,
-            filter: "default",
-        };
-        let resp = crate::stack_overflow::current_user(so_config, &req)
+        let resp = so_client
+            .current_user()
             .await
             .context(UnableToGetCurrentUser)?;
 
-        dbg!(&resp);
-
         let account_id = resp.account_id;
+        let access_token = so_client.access_token().clone();
 
         db.register(account_id, access_token.clone())
             .await

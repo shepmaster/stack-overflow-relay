@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
+use std::env;
 use url::Url;
 
 const OAUTH_ENTRY_URI: &str = "https://stackoverflow.com/oauth";
@@ -15,13 +16,13 @@ pub struct AccountId(pub i32);
 pub struct UserId(pub i32);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize)]
-pub struct Date(i64);
+pub struct Date(pub i64);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize)]
-pub struct Duration(i64);
+pub struct Duration(pub i64);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize)]
-pub struct PostId(i64);
+pub struct PostId(pub i64);
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
@@ -31,7 +32,7 @@ pub enum Wrapper<T> {
 }
 
 impl<T> Wrapper<T> {
-    pub fn into_result(self) -> Result<ApiSuccess<T>, ApiError> {
+    fn into_result(self) -> Result<ApiSuccess<T>, ApiError> {
         match self {
             Wrapper::Error(e) => Err(e),
             Wrapper::Success(s) => Ok(s),
@@ -42,10 +43,10 @@ impl<T> Wrapper<T> {
 #[derive(Debug, Deserialize)]
 pub struct ApiSuccess<T> {
     pub items: Vec<T>,
-    backoff: Option<i32>,
-    has_more: bool,
+    pub backoff: Option<i32>,
+    pub has_more: bool,
     #[serde(flatten)]
-    quota: Quota,
+    pub quota: Quota,
 }
 
 impl<T> ApiSuccess<T> {
@@ -58,9 +59,9 @@ impl<T> ApiSuccess<T> {
 #[derive(Debug, Deserialize)]
 pub struct Quota {
     #[serde(rename = "quota_max")]
-    max: i32,
+    pub max: i32,
     #[serde(rename = "quota_remaining")]
-    remaining: i32,
+    pub remaining: i32,
 }
 
 #[derive(Debug, Snafu, Deserialize)]
@@ -92,11 +93,10 @@ impl ApiError {
 #[derive(Debug, Deserialize)]
 pub struct Notification {
     pub body: String,
-    creation_date: Date,
-    is_unread: bool,
-    notification_type: NotificationType,
-    post_id: Option<PostId>,
-    //    site: Site,
+    pub creation_date: Date,
+    pub is_unread: bool,
+    pub notification_type: NotificationType,
+    pub post_id: Option<PostId>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -126,16 +126,35 @@ pub struct User {
     pub user_id: UserId,
 }
 
-#[derive(Debug)]
+//--
+
+#[derive(Debug, Clone)]
 pub struct Config {
     client_id: String,
+    client_secret: String,
+    client_key: String,
     unread: Url,
     current_user: Url,
 }
 
 impl Config {
-    pub fn new(client_id: impl Into<String>) -> Result<Self> {
+    pub fn from_environment() -> Result<Self> {
+        let client_id = env::var("STACK_OVERFLOW_CLIENT_ID").context(UnknownClientId)?;
+        let client_secret =
+            env::var("STACK_OVERFLOW_CLIENT_SECRET").context(UnknownClientSecret)?;
+        let client_key = env::var("STACK_OVERFLOW_CLIENT_KEY").context(UnknownClientKey)?;
+
+        Self::new(client_id, client_secret, client_key)
+    }
+
+    fn new(
+        client_id: impl Into<String>,
+        client_secret: impl Into<String>,
+        client_key: impl Into<String>,
+    ) -> Result<Self> {
         let client_id = client_id.into();
+        let client_secret = client_secret.into();
+        let client_key = client_key.into();
         let unread = Url::parse("https://api.stackexchange.com/2.2/me/notifications/unread")
             .context(UnableToConfigureUnreadUrl)?;
         let current_user = Url::parse("https://api.stackexchange.com/2.2/me")
@@ -143,6 +162,8 @@ impl Config {
 
         Ok(Config {
             client_id,
+            client_secret,
+            client_key,
             unread,
             current_user,
         })
@@ -160,87 +181,206 @@ impl Config {
         )
         .context(UnableToBuildOauthEntryUrl)
     }
+
+    pub fn into_unauth_client(self) -> UnauthClient {
+        UnauthClient {
+            client: reqwest::Client::new(),
+            config: self,
+        }
+    }
+}
+
+const SITE_STACKOVERFLOW: &str = "stackoverflow";
+const FILTER_DEFAULT: &str = "default";
+
+pub struct UnauthClient {
+    client: reqwest::Client,
+    config: Config,
+}
+
+impl UnauthClient {
+    pub fn into_auth_client(self, access_token: AccessToken) -> AuthClient {
+        let Self { client, config } = self;
+        AuthClient {
+            client,
+            auth_config: AuthConfig {
+                access_token,
+                config,
+            },
+        }
+    }
+
+    pub async fn get_access_token(
+        &self,
+        oauth_code: &str,
+        redirect_uri: &str,
+    ) -> Result<AccessToken> {
+        let Self { client, config } = self;
+
+        #[derive(Debug, Serialize)]
+        struct AccessTokenParams<'a> {
+            client_id: &'a str,
+            client_secret: &'a str,
+            code: &'a str,
+            redirect_uri: &'a str,
+        }
+
+        #[derive(Debug, Deserialize)]
+        struct AccessTokenResponse {
+            access_token: AccessToken,
+            expires: Option<Duration>,
+        }
+
+        let params = AccessTokenParams {
+            client_id: &config.client_id,
+            client_secret: &config.client_secret,
+            code: oauth_code,
+            redirect_uri,
+        };
+
+        let res = client
+            .post(OAUTH_ACCESS_TOKEN_URI)
+            .form(&params)
+            .send()
+            .await
+            .context(UnableToExecuteAccessTokenRequest)?
+            .json::<AccessTokenResponse>()
+            .await
+            .context(UnableToDeserializeAccessTokenRequest)?;
+
+        Ok(res.access_token)
+    }
 }
 
 #[derive(Debug, Serialize)]
-pub struct AccessTokenRequest<'a> {
-    pub client_id: &'a str,
-    pub client_secret: &'a str,
-    pub code: &'a str,
-    pub redirect_uri: &'a str,
+struct AuthParams<'a, T> {
+    key: &'a str,
+    site: &'a str,
+    access_token: &'a AccessToken,
+    #[serde(flatten)]
+    request_params: T,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct AccessTokenResponse {
-    pub access_token: AccessToken,
-    pub expires: Option<Duration>,
+pub struct AuthClient {
+    client: reqwest::Client,
+    auth_config: AuthConfig,
 }
 
-#[derive(Debug, Serialize)]
-pub struct CurrentUserParams<'a> {
-    pub key: &'a str,
-    pub site: &'a str,
-    pub access_token: &'a AccessToken,
-    pub filter: &'a str,
+struct AuthConfig {
+    access_token: AccessToken,
+    config: Config,
 }
 
-pub async fn current_user(so_config: &Config, params: &CurrentUserParams<'_>) -> Result<User> {
-    let q = serde_urlencoded::to_string(params).context(UnableToBuildCurrentUserRequest)?;
-    let mut current = so_config.current_user.clone();
-    current.set_query(Some(&q));
+impl AuthConfig {
+    fn auth_params<T>(&self, request_params: T) -> AuthParams<'_, T> {
+        let Self {
+            config,
+            access_token,
+            ..
+        } = self;
 
-    reqwest::get(current)
-        .await
-        .context(UnableToExecuteCurrentUserRequest)?
-        .json::<Wrapper<User>>()
-        .await
-        .context(UnableToDeserializeCurrentUserRequest)?
-        .into_result()
-        .context(CurrentUserRequestFailed)?
-        .into_singleton()
-        .context(CurrentUserRequestDidNotHaveOneResult)
+        AuthParams {
+            key: &config.client_key,
+            access_token,
+            site: SITE_STACKOVERFLOW,
+            request_params,
+        }
+    }
 }
 
-pub async fn get_access_token(params: &AccessTokenRequest<'_>) -> Result<AccessTokenResponse> {
-    let client = reqwest::Client::new();
-    let res = client
-        .post(OAUTH_ACCESS_TOKEN_URI)
-        .form(params)
-        .send()
-        .await
-        .context(UnableToExecuteAccessTokenRequest)?;
+impl AuthClient {
+    pub fn new(config: Config, access_token: AccessToken) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            auth_config: AuthConfig {
+                access_token,
+                config,
+            },
+        }
+    }
 
-    res.json()
-        .await
-        .context(UnableToDeserializeAccessTokenRequest)
-}
+    pub fn access_token(&self) -> &AccessToken {
+        &self.auth_config.access_token
+    }
 
-#[derive(Debug, Serialize)]
-pub struct UnreadParams<'a> {
-    pub key: &'a str,
-    pub site: &'a str,
-    pub access_token: &'a AccessToken,
-    pub filter: &'a str,
-}
+    pub async fn current_user(&self) -> Result<User> {
+        let Self {
+            client,
+            auth_config,
+        } = self;
 
-pub async fn unread_notifications(
-    so_config: &Config,
-    params: &UnreadParams<'_>,
-) -> Result<Wrapper<Notification>> {
-    let q = serde_urlencoded::to_string(params).context(UnableToBuildUnreadRequest)?;
-    let mut unread = so_config.unread.clone();
-    unread.set_query(Some(&q));
+        #[derive(Debug, Serialize)]
+        struct CurrentUserParams<'a> {
+            filter: &'a str,
+        }
 
-    reqwest::get(unread)
-        .await
-        .context(UnableToExecuteUnreadRequest)?
-        .json()
-        .await
-        .context(UnableToDeserializeUnreadRequest)
+        let params = auth_config.auth_params(CurrentUserParams {
+            filter: FILTER_DEFAULT,
+        });
+
+        client
+            .get(auth_config.config.current_user.clone())
+            .query(&params)
+            .send()
+            .await
+            .context(UnableToExecuteCurrentUserRequest)?
+            .json::<Wrapper<User>>()
+            .await
+            .context(UnableToDeserializeCurrentUserRequest)?
+            .into_result()
+            .context(CurrentUserRequestFailed)?
+            .into_singleton()
+            .context(CurrentUserRequestDidNotHaveOneResult)
+    }
+
+    pub async fn unread_notifications(&self) -> Result<Vec<Notification>> {
+        let Self {
+            client,
+            auth_config,
+        } = self;
+
+        #[derive(Debug, Serialize)]
+        struct UnreadParams<'a> {
+            filter: &'a str,
+        }
+
+        let params = auth_config.auth_params(UnreadParams {
+            filter: FILTER_DEFAULT,
+        });
+
+        let r = client
+            .get(auth_config.config.unread.clone())
+            .query(&params)
+            .send()
+            .await
+            .context(UnableToExecuteUnreadRequest)?
+            .json::<Wrapper<Notification>>()
+            .await
+            .context(UnableToDeserializeUnreadRequest)?
+            .into_result()
+            .context(UnreadRequestFailed)?;
+
+        Ok(r.items)
+    }
 }
 
 #[derive(Debug, Snafu)]
 pub enum Error {
+    #[snafu(display("STACK_OVERFLOW_CLIENT_ID must be set"))]
+    UnknownClientId {
+        source: env::VarError,
+    },
+
+    #[snafu(display("STACK_OVERFLOW_CLIENT_SECRET must be set"))]
+    UnknownClientSecret {
+        source: env::VarError,
+    },
+
+    #[snafu(display("STACK_OVERFLOW_CLIENT_KEY must be set"))]
+    UnknownClientKey {
+        source: env::VarError,
+    },
+
     UnableToConfigureUnreadUrl {
         source: url::ParseError,
     },
@@ -261,10 +401,6 @@ pub enum Error {
         source: reqwest::Error,
     },
 
-    UnableToBuildCurrentUserRequest {
-        source: serde_urlencoded::ser::Error,
-    },
-
     UnableToExecuteCurrentUserRequest {
         source: reqwest::Error,
     },
@@ -279,16 +415,16 @@ pub enum Error {
 
     CurrentUserRequestDidNotHaveOneResult {},
 
-    UnableToBuildUnreadRequest {
-        source: serde_urlencoded::ser::Error,
-    },
-
     UnableToExecuteUnreadRequest {
         source: reqwest::Error,
     },
 
     UnableToDeserializeUnreadRequest {
         source: reqwest::Error,
+    },
+
+    UnreadRequestFailed {
+        source: ApiError,
     },
 }
 

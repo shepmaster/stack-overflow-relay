@@ -1,5 +1,6 @@
 use crate::{
-    database::DbHandle, poll_spawner::PollSpawnerHandle, GlobalConfig, GlobalStackOverflowConfig,
+    database::DbHandle, domain::AccountId, poll_spawner::PollSpawnerHandle, GlobalConfig,
+    GlobalStackOverflowConfig,
 };
 use snafu::{ResultExt, Snafu};
 
@@ -62,8 +63,40 @@ impl RegisterFlow {
 
         let account_id = resp.account_id;
 
-        db.register(account_id, access_token.clone()).await;
+        db.register(account_id, access_token.clone())
+            .await
+            .context(UnableToPersistRegistration)?;
         poll_spawner.start_polling(account_id, access_token).await;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NotifyFlow {
+    db: DbHandle,
+}
+
+impl NotifyFlow {
+    pub fn new(db: DbHandle) -> Self {
+        Self { db }
+    }
+
+    pub async fn notify(&mut self, notifications: Vec<(AccountId, String)>) -> Result<()> {
+        let Self { db } = self;
+
+        if notifications.is_empty() {
+            return Ok(());
+        };
+        let new_notifications = db
+            .add_new_notifications(notifications)
+            .await
+            .context(UnableToPersistNotifications)?;
+
+        if new_notifications.is_empty() {
+            return Ok(());
+        };
+        crate::ios::send_notifications(new_notifications).await; // Need the unique ios id
 
         Ok(())
     }
@@ -77,6 +110,14 @@ pub enum Error {
 
     UnableToGetCurrentUser {
         source: crate::stack_overflow::Error,
+    },
+
+    UnableToPersistRegistration {
+        source: crate::database::Error,
+    },
+
+    UnableToPersistNotifications {
+        source: crate::database::Error,
     },
 }
 

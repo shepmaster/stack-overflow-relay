@@ -31,7 +31,7 @@ pub enum Wrapper<T> {
 }
 
 impl<T> Wrapper<T> {
-    fn into_result(self) -> Result<ApiSuccess<T>, ApiError> {
+    pub fn into_result(self) -> Result<ApiSuccess<T>, ApiError> {
         match self {
             Wrapper::Error(e) => Err(e),
             Wrapper::Success(s) => Ok(s),
@@ -41,7 +41,7 @@ impl<T> Wrapper<T> {
 
 #[derive(Debug, Deserialize)]
 pub struct ApiSuccess<T> {
-    items: Vec<T>,
+    pub items: Vec<T>,
     backoff: Option<i32>,
     has_more: bool,
     #[serde(flatten)]
@@ -91,7 +91,7 @@ impl ApiError {
 
 #[derive(Debug, Deserialize)]
 pub struct Notification {
-    body: String,
+    pub body: String,
     creation_date: Date,
     is_unread: bool,
     notification_type: NotificationType,

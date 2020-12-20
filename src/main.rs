@@ -10,7 +10,9 @@ pub use config::Config;
 
 mod config;
 mod database;
+mod domain;
 mod flow;
+mod ios;
 mod poll_spawner;
 mod stack_overflow;
 mod web_ui;
@@ -41,8 +43,14 @@ async fn core() -> Result<()> {
     let conn = PgConnection::establish(database_url).context(UnableToConnect { database_url })?;
 
     let (db, db_task) = database::spawn(database::Db::new(conn));
-    let (poll_spawner, poll_spawner_task) =
-        poll_spawner::spawn(poll_spawner::PollSpawner::new(config, so_config));
+
+    let notify_flow = flow::NotifyFlow::new(db.clone());
+
+    let (poll_spawner, poll_spawner_task) = poll_spawner::spawn(poll_spawner::PollSpawner::new(
+        config,
+        so_config,
+        notify_flow,
+    ));
 
     let register_flow = flow::RegisterFlow::new(config, so_config, db, poll_spawner.clone());
 

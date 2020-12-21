@@ -24,7 +24,7 @@ impl RegisterFlow {
         }
     }
 
-    pub async fn register(&mut self, code: &str, redirect_uri: &str) -> Result<()> {
+    pub async fn register(&mut self, code: &str, redirect_uri: &str) -> Result<AccountId> {
         let Self {
             so_config,
             db,
@@ -52,7 +52,7 @@ impl RegisterFlow {
             .context(UnableToPersistRegistration)?;
         poll_spawner.start_polling(account_id, access_token).await;
 
-        Ok(())
+        Ok(account_id)
     }
 }
 

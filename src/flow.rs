@@ -1,6 +1,8 @@
 use crate::{
-    database::DbHandle, domain::AccountId, poll_spawner::PollSpawnerHandle,
-    GlobalStackOverflowConfig,
+    database::DbHandle,
+    domain::{AccountId, IncomingNotification, UserKey},
+    poll_spawner::PollSpawnerHandle,
+    pushover, GlobalStackOverflowConfig,
 };
 use snafu::{ResultExt, Snafu};
 
@@ -57,17 +59,37 @@ impl RegisterFlow {
 }
 
 #[derive(Debug, Clone)]
-pub struct NotifyFlow {
+pub struct SetPushoverUserFlow {
     db: DbHandle,
 }
 
-impl NotifyFlow {
+impl SetPushoverUserFlow {
     pub fn new(db: DbHandle) -> Self {
         Self { db }
     }
 
-    pub async fn notify(&mut self, notifications: Vec<(AccountId, String)>) -> Result<()> {
+    pub async fn set_pushover_user(&mut self, account_id: AccountId, user: UserKey) -> Result<()> {
         let Self { db } = self;
+
+        db.set_pushover_user(account_id, user).await.context(UnableToPersistPushoverUser)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NotifyFlow {
+    db: DbHandle,
+    pushover: pushover::Client,
+}
+
+impl NotifyFlow {
+    pub fn new(db: DbHandle, pushover: pushover::Client) -> Self {
+        Self { db, pushover }
+    }
+
+    pub async fn notify(&mut self, notifications: Vec<IncomingNotification>) -> Result<()> {
+        let Self { db, pushover } = self;
 
         if notifications.is_empty() {
             return Ok(());
@@ -79,8 +101,8 @@ impl NotifyFlow {
 
         if new_notifications.is_empty() {
             return Ok(());
-        };
-        crate::ios::send_notifications(new_notifications).await; // Need the unique ios id
+        }
+        pushover.notify(new_notifications).await.context(UnableToDeliverNotifications)?;
 
         Ok(())
     }
@@ -100,8 +122,16 @@ pub enum Error {
         source: crate::database::Error,
     },
 
+    UnableToPersistPushoverUser {
+        source: crate::database::Error,
+    },
+
     UnableToPersistNotifications {
         source: crate::database::Error,
+    },
+
+    UnableToDeliverNotifications {
+        source: crate::pushover::Error,
     },
 }
 

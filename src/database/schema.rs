@@ -8,6 +8,13 @@ table! {
 }
 
 table! {
+    pushover_users (key) {
+        key -> Text,
+        account_id -> Int4,
+    }
+}
+
+table! {
     registrations (account_id) {
         account_id -> Int4,
         access_token -> Text,
@@ -15,5 +22,6 @@ table! {
 }
 
 joinable!(notifications -> registrations (account_id));
+joinable!(pushover_users -> registrations (account_id));
 
-allow_tables_to_appear_in_same_query!(notifications, registrations,);
+allow_tables_to_appear_in_same_query!(notifications, pushover_users, registrations,);

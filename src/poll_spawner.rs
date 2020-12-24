@@ -1,4 +1,5 @@
 use crate::{
+    domain::IncomingNotification,
     flow::NotifyFlow,
     stack_overflow::{self, AccessToken, AccountId},
     GlobalStackOverflowConfig,
@@ -73,7 +74,13 @@ async fn poll_one_account(
 
         let r = dbg!(so_client.unread_notifications().await).expect("TODO");
 
-        let r = r.into_iter().map(|n| (account_id, n.body)).collect();
+        let r = r
+            .into_iter()
+            .map(|n| IncomingNotification {
+                account_id,
+                text: n.body,
+            })
+            .collect();
 
         flow.notify(r).await.expect("TODO");
     }

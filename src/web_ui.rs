@@ -1,13 +1,18 @@
-use crate::{domain::AccountId, GlobalConfig, GlobalStackOverflowConfig};
+use crate::{
+    domain::{AccountId, UserKey},
+    GlobalConfig, GlobalStackOverflowConfig,
+};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
-use snafu::{ensure, OptionExt, Snafu};
+use serde::Deserialize;
+use snafu::{OptionExt, ResultExt, Snafu};
 use std::{
     collections::BTreeMap,
     convert::{Infallible, TryInto},
 };
 use tracing::{error, info};
 use warp::{
+    body,
     filters::cookie,
     http::{header, StatusCode},
     path, reply, Filter, Rejection, Reply,
@@ -15,6 +20,12 @@ use warp::{
 
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 struct SessionId([u8; 32]);
+
+impl rand::distributions::Distribution<SessionId> for rand::distributions::Standard {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> SessionId {
+        SessionId(self.sample(rng))
+    }
+}
 
 impl SessionId {
     fn from_cookie(s: &str) -> Option<Self> {
@@ -61,7 +72,7 @@ impl Sessions {
         let mut rng = rand::rngs::StdRng::from_entropy();
         let mut id;
         loop {
-            id = SessionId(rng.gen());
+            id = rng.gen();
             if !self.0.contains_key(&id) {
                 break;
             }
@@ -90,15 +101,16 @@ pub(crate) async fn serve(
     config: GlobalConfig,
     so_config: GlobalStackOverflowConfig,
     register_flow: crate::flow::RegisterFlow,
+    set_pushover_user_flow: crate::flow::SetPushoverUserFlow,
 ) {
     let oauth = oauth::routes(config, so_config, register_flow);
 
     let auth_root = path::end()
         .and(auth_session())
-        .map(|session| format!("{:?}", session));
+        .map(|_session| warp::reply::html(html::auth_root().into_string()));
     let unauth_root = path::end().map(|| {
         let id = SESSIONS.lock().create();
-        let h = warp::reply::html(html::root().into_string());
+        let h = warp::reply::html(html::unauth_root().into_string());
         reply::with_header(
             h,
             header::SET_COOKIE,
@@ -107,7 +119,28 @@ pub(crate) async fn serve(
     });
     let root = auth_root.or(unauth_root);
 
-    let routes = oauth.or(root);
+    #[derive(Deserialize)]
+    struct Thing {
+        thing: String,
+    }
+
+    let user_me_post = warp::path!("user" / "me")
+        .and(auth_session())
+        .and(warp::post())
+        .and(body::form())
+        .and(body::content_length_limit(1024))
+        .and_then(move |(account_id, _), thing: Thing| {
+            let mut set_pushover_user_flow = set_pushover_user_flow.clone();
+            async move {
+                set_pushover_user_flow
+                    .set_pushover_user(account_id, UserKey(thing.thing))
+                    .await
+                    .context(UnableToSetPushoverUser)?;
+                Ok::<_, Rejection>(redirect_to("/"))
+            }
+        });
+
+    let routes = oauth.or(root).or(user_me_post);
     let routes = routes.recover(report_invalid);
 
     info!("Starting web server at {}", &config.listen_address);
@@ -126,11 +159,11 @@ fn session() -> warp::filters::BoxedFilter<(Session,)> {
         .boxed()
 }
 
-fn auth_session() -> warp::filters::BoxedFilter<(Session,)> {
+fn auth_session() -> warp::filters::BoxedFilter<((AccountId, Session),)> {
     session()
         .and_then(|session: Session| async move {
-            ensure!(session.1.account_id.is_some(), NotAuthenticated);
-            Ok::<_, Rejection>(session)
+            let account_id = session.1.account_id.clone().context(NotAuthenticated)?;
+            Ok::<_, Rejection>((account_id, session))
         })
         .boxed()
 }
@@ -164,11 +197,13 @@ async fn report_invalid(r: Rejection) -> Result<impl Reply, Infallible> {
             )),
             UnableToGetOauthEntryUrl { .. }
             | UnableToCompleteRegistration { .. }
+            | UnableToSetPushoverUser { .. }
             | UnableToBuildRedirectUri { .. } => {
                 error!("Unhandled web UI error: {}", e);
                 internal()
             }
         }
+    //    } else if r.is_not_found() {
     } else {
         error!("Unhandled web UI error: {:?}", r);
         internal()
@@ -182,6 +217,10 @@ enum Error {
     StateParameterMismatch,
 
     UnableToCompleteRegistration {
+        source: crate::flow::Error,
+    },
+
+    UnableToSetPushoverUser {
         source: crate::flow::Error,
     },
 
@@ -304,10 +343,21 @@ mod oauth {
 mod html {
     use maud::{html, Markup};
 
-    pub fn root() -> Markup {
+    pub fn unauth_root() -> Markup {
         page(|| {
             html! {
                 a href="/oauth/stackoverflow/begin" { "Start login" }
+            }
+        })
+    }
+
+    pub fn auth_root() -> Markup {
+        page(|| {
+            html! {
+                form action="/user/me" method="post" {
+                    input type="text" name="thing" placeholder="the thing";
+                    input type="submit";
+                }
             }
         })
     }

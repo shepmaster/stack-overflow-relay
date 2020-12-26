@@ -17,7 +17,8 @@ impl Config {
         let database_url = env::var("DATABASE_URL").context(UnknownDatabaseUrl)?;
         let uri = env::var("WEB_PUBLIC_URI").context(UnknownWebPublicUri)?;
         let address = env::var("WEB_LISTEN_ADDRESS").context(UnknownWebListenAddress)?;
-        let port = env::var("WEB_LISTEN_PORT").context(UnknownWebListenPort)?;
+        let port = env::var("WEB_LISTEN_PORT").or_else(|_| env::var("PORT"));
+        let port = port.context(UnknownWebListenPort)?;
 
         let public_uri = Url::parse(&uri).context(InvalidWebPublicUri { uri })?;
         let address: IpAddr = address

@@ -2,6 +2,7 @@ use crate::domain::OutgoingNotification;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use std::env;
+use tracing::{trace, trace_span, Instrument};
 use url::Url;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -40,6 +41,7 @@ pub struct Client {
 impl Client {
     pub async fn notify(&self, notifications: Vec<OutgoingNotification>) -> Result<()> {
         let Self { client, config } = self;
+        let s = trace_span!("notify", count = notifications.len());
 
         #[derive(Debug, Serialize)]
         struct NotifyParams<'a> {
@@ -49,23 +51,29 @@ impl Client {
             message: &'a str,
         }
 
-        let notifications = notifications.iter().map(|n| NotifyParams {
-            token: &config.token,
-            user: &n.user,
-            title: "Stack Overflow notification",
-            message: &n.text,
-        });
+        async {
+            trace!("Performing notifications");
 
-        for n in notifications {
-            client
-                .post(config.notify_url.clone())
-                .query(&n)
-                .send()
-                .await
-                .context(UnableToSendNotification)?;
+            let notifications = notifications.iter().map(|n| NotifyParams {
+                token: &config.token,
+                user: &n.user,
+                title: "Stack Overflow notification",
+                message: &n.text,
+            });
+
+            for n in notifications {
+                client
+                    .post(config.notify_url.clone())
+                    .query(&n)
+                    .send()
+                    .await
+                    .context(UnableToSendNotification)?;
+            }
+
+            Ok(())
         }
-
-        Ok(())
+        .instrument(s)
+        .await
     }
 }
 

@@ -5,6 +5,7 @@ use crate::{
     pushover, GlobalStackOverflowConfig,
 };
 use snafu::{ResultExt, Snafu};
+use tracing::{trace, trace_span, Instrument};
 
 #[derive(Debug, Clone)]
 pub struct BootFlow {
@@ -114,25 +115,32 @@ impl NotifyFlow {
     }
 
     pub async fn notify(&mut self, notifications: Vec<IncomingNotification>) -> Result<()> {
+        let s = trace_span!("notify");
         let Self { db, pushover } = self;
 
-        if notifications.is_empty() {
-            return Ok(());
-        };
-        let new_notifications = db
-            .add_new_notifications(notifications)
-            .await
-            .context(UnableToPersistNotifications)?;
+        async {
+            if notifications.is_empty() {
+                trace!("No notifications present");
+                return Ok(());
+            };
+            let new_notifications = db
+                .add_new_notifications(notifications)
+                .await
+                .context(UnableToPersistNotifications)?;
 
-        if new_notifications.is_empty() {
-            return Ok(());
+            if new_notifications.is_empty() {
+                trace!("All notifications have been seen");
+                return Ok(());
+            }
+            pushover
+                .notify(new_notifications)
+                .await
+                .context(UnableToDeliverNotifications)?;
+
+            Ok(())
         }
-        pushover
-            .notify(new_notifications)
-            .await
-            .context(UnableToDeliverNotifications)?;
-
-        Ok(())
+        .instrument(s)
+        .await
     }
 }
 

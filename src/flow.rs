@@ -71,7 +71,9 @@ impl SetPushoverUserFlow {
     pub async fn set_pushover_user(&mut self, account_id: AccountId, user: UserKey) -> Result<()> {
         let Self { db } = self;
 
-        db.set_pushover_user(account_id, user).await.context(UnableToPersistPushoverUser)?;
+        db.set_pushover_user(account_id, user)
+            .await
+            .context(UnableToPersistPushoverUser)?;
 
         Ok(())
     }
@@ -102,7 +104,10 @@ impl NotifyFlow {
         if new_notifications.is_empty() {
             return Ok(());
         }
-        pushover.notify(new_notifications).await.context(UnableToDeliverNotifications)?;
+        pushover
+            .notify(new_notifications)
+            .await
+            .context(UnableToDeliverNotifications)?;
 
         Ok(())
     }

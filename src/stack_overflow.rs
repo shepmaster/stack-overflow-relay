@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{ensure, OptionExt, ResultExt, Snafu};
 use std::env;
 use url::Url;
 
@@ -243,7 +243,11 @@ impl UnauthClient {
             .form(&params)
             .send()
             .await
-            .context(UnableToExecuteAccessTokenRequest)?
+            .context(UnableToExecuteAccessTokenRequest)?;
+
+        ensure!(res.status().is_success(), AccessTokenRequestRejected);
+
+        let res = res
             .json::<AccessTokenResponse>()
             .await
             .context(UnableToDeserializeAccessTokenRequest)?;
@@ -400,6 +404,8 @@ pub enum Error {
     UnableToDeserializeAccessTokenRequest {
         source: reqwest::Error,
     },
+
+    AccessTokenRequestRejected,
 
     UnableToExecuteCurrentUserRequest {
         source: reqwest::Error,

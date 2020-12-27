@@ -53,6 +53,9 @@ async fn core() -> Result<()> {
     let (poll_spawner, poll_spawner_task) =
         poll_spawner::spawn(poll_spawner::PollSpawner::new(so_config, notify_flow));
 
+    let mut boot_flow = flow::BootFlow::new(db.clone(), poll_spawner.clone());
+    boot_flow.boot().await.context(UnableToBoot)?;
+
     let register_flow = flow::RegisterFlow::new(so_config, db.clone(), poll_spawner.clone());
     let set_pushover_user_flow = flow::SetPushoverUserFlow::new(db);
 
@@ -116,6 +119,9 @@ enum Error {
         source: diesel::ConnectionError,
         database_url: String,
     },
+
+    #[snafu(display("Unable to boot background workers"))]
+    UnableToBoot { source: flow::Error },
 
     #[snafu(display("The web UI failed"))]
     WebUiFailed { source: tokio::task::JoinError },

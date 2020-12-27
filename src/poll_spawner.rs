@@ -33,6 +33,12 @@ impl PollSpawner {
 
 // Actor API
 impl PollSpawner {
+    fn start_many(&mut self, registrations: Vec<(AccountId, AccessToken)>) {
+        for (account_id, access_token) in registrations {
+            self.start_polling(account_id, access_token);
+        }
+    }
+
     fn start_polling(&mut self, account_id: AccountId, access_token: AccessToken) {
         let s = trace_span!("start_polling", account_id = account_id.0);
         let _s = s.enter();
@@ -105,6 +111,16 @@ pub fn spawn(this: PollSpawner) -> (PollSpawnerHandle, JoinHandle<()>) {
 pub struct PollSpawnerHandle(mpsc::Sender<PollSpawnerCommand>);
 
 impl PollSpawnerHandle {
+    pub async fn start_many(&mut self, a: Vec<(AccountId, AccessToken)>) {
+        let (tx, rx) = oneshot::channel();
+
+        // Ignore send errors. If this send fails, so does the
+        // rx.await below. There's no reason to check for the
+        // same failure twice.
+        let _ = self.0.send(PollSpawnerCommand::StartMany(tx, a)).await;
+        rx.await.expect("TODO")
+    }
+
     pub async fn start_polling(&mut self, a: AccountId, b: AccessToken) {
         let (tx, rx) = oneshot::channel();
 
@@ -118,12 +134,18 @@ impl PollSpawnerHandle {
 
 #[derive(Debug)]
 enum PollSpawnerCommand {
+    StartMany(oneshot::Sender<()>, Vec<(AccountId, AccessToken)>),
     Register(oneshot::Sender<()>, AccountId, AccessToken),
 }
 
 async fn poll_spawner_task(mut this: PollSpawner, mut rx: mpsc::Receiver<PollSpawnerCommand>) {
     while let Some(cmd) = rx.next().await {
         match cmd {
+            PollSpawnerCommand::StartMany(__r, a) => {
+                let retval = this.start_many(a);
+                // If we couldn't respond, that's OK
+                let _ = __r.send(retval);
+            }
             PollSpawnerCommand::Register(__r, a, b) => {
                 let retval = this.start_polling(a, b);
                 // If we couldn't respond, that's OK

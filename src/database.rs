@@ -25,6 +25,21 @@ impl Db {
 }
 
 impl Db {
+    fn registrations(&self) -> Result<Vec<(AccountId, AccessToken)>> {
+        use schema::registrations;
+
+        let Self { conn } = self;
+
+        let r = registrations::table
+            .select((registrations::account_id, registrations::access_token))
+            .load(conn)
+            .context(UnableToQueryRegistrations)?;
+
+        Ok(r.into_iter()
+            .map(|(id, token)| (AccountId(id), AccessToken(token)))
+            .collect())
+    }
+
     fn register(&self, account_id: AccountId, access_token: AccessToken) -> Result<()> {
         use models::Registration;
         use schema::registrations::dsl;
@@ -138,6 +153,8 @@ where
 
 #[derive(Debug, Snafu)]
 pub enum Error {
+    UnableToQueryRegistrations { source: diesel::result::Error },
+
     UnableToInsertRegistration { source: diesel::result::Error },
 
     UnableToInsertPushoverUser { source: diesel::result::Error },
@@ -164,6 +181,16 @@ pub fn spawn(this: Db) -> (DbHandle, tokio::task::JoinHandle<()>) {
 pub struct DbHandle(mpsc::Sender<DbCommand>);
 
 impl DbHandle {
+    pub async fn registrations(&mut self) -> Result<Vec<(AccountId, AccessToken)>> {
+        let (tx, rx) = oneshot::channel();
+
+        // Ignore send errors. If this send fails, so does the
+        // rx.await below. There's no reason to check for the
+        // same failure twice.
+        let _ = self.0.send(DbCommand::Registrations(tx)).await;
+        rx.await.expect("Actor error - task gone")
+    }
+
     pub async fn register(&mut self, a: AccountId, b: AccessToken) -> Result<()> {
         let (tx, rx) = oneshot::channel();
 
@@ -200,6 +227,8 @@ impl DbHandle {
 
 #[derive(Debug)]
 enum DbCommand {
+    Registrations(oneshot::Sender<Result<Vec<(AccountId, AccessToken)>>>),
+
     Register(oneshot::Sender<Result<()>>, AccountId, AccessToken),
 
     SetPushoverUser(oneshot::Sender<Result<()>>, AccountId, UserKey),
@@ -213,6 +242,15 @@ enum DbCommand {
 async fn db_task(#[allow(unused_mut)] mut this: Db, mut rx: mpsc::Receiver<DbCommand>) {
     while let Some(cmd) = rx.next().await {
         match cmd {
+            DbCommand::Registrations(__r) => {
+                // Macro: block_in_place vs nothing vs spawn_blocking
+                // TODO: This should be spawn-blocking
+                let retval = tokio::task::block_in_place(|| this.registrations());
+
+                // If we couldn't respond, that's OK
+                let _ = __r.send(retval);
+            }
+
             DbCommand::Register(__r, a, b) => {
                 // Macro: block_in_place vs nothing vs spawn_blocking
                 // TODO: This should be spawn-blocking

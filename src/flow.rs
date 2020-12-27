@@ -7,6 +7,29 @@ use crate::{
 use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Clone)]
+pub struct BootFlow {
+    db: DbHandle,
+    poll_spawner: PollSpawnerHandle,
+}
+
+impl BootFlow {
+    pub fn new(db: DbHandle, poll_spawner: PollSpawnerHandle) -> Self {
+        Self { db, poll_spawner }
+    }
+
+    pub async fn boot(&mut self) -> Result<()> {
+        let Self { db, poll_spawner } = self;
+
+        let registrations = db
+            .registrations()
+            .await
+            .context(UnableToLoadRegistrations)?;
+        poll_spawner.start_many(registrations).await;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct RegisterFlow {
     so_config: GlobalStackOverflowConfig,
     db: DbHandle,
@@ -115,6 +138,10 @@ impl NotifyFlow {
 
 #[derive(Debug, Snafu)]
 pub enum Error {
+    UnableToLoadRegistrations {
+        source: crate::database::Error,
+    },
+
     UnableToGetOauthAccessToken {
         source: crate::stack_overflow::Error,
     },

@@ -2,17 +2,16 @@ use crate::{
     domain::{IncomingNotification, OutgoingNotification, UserKey},
     stack_overflow::{AccessToken, AccountId},
 };
-use diesel::{connection::TransactionManager, pg::upsert::excluded, prelude::*};
+use diesel::{connection::TransactionManager, dsl::any, pg::upsert::excluded, prelude::*};
 use futures::{
     channel::{mpsc, oneshot},
     SinkExt, StreamExt,
 };
 use snafu::{ResultExt, Snafu};
+use tracing::{trace, trace_span};
 
 mod models;
 mod schema;
-
-joinable!(schema::pushover_users -> schema::notifications (account_id));
 
 pub struct Db {
     conn: diesel::PgConnection,
@@ -90,9 +89,13 @@ impl Db {
     ) -> Result<Vec<OutgoingNotification>> {
         use models::NewNotification;
         use schema::notifications as n;
-        use schema::pushover_users as p; //::dsl; //::dsl;
+        use schema::pushover_users as p;
 
+        let s = trace_span!("add_new_notifications");
+        let _s = s.enter();
         let Self { conn } = self;
+
+        trace!("Checking {} notifications", notifications.len());
 
         let notifications: Vec<_> = notifications
             .into_iter()
@@ -103,16 +106,22 @@ impl Db {
             .collect();
 
         let raw_notifications: Vec<(String, String)> = transaction(conn, |conn| {
-            diesel::insert_into(n::table)
+            let ids = diesel::insert_into(n::table)
                 .values(notifications)
                 .on_conflict((n::account_id, n::text))
                 .do_nothing()
-                .execute(conn)
+                .returning(n::id)
+                .log_query()
+                .get_results::<i32>(conn)
                 .context(UnableToInsertNotifications)?;
 
+            trace!("Inserted {} new notifications", ids.len());
+
             p::table
-                .inner_join(n::table)
+                .inner_join(n::table.on(n::account_id.eq(p::account_id)))
                 .select((p::key, n::text))
+                .filter(n::id.eq(any(ids)))
+                .log_query()
                 .load(conn)
                 .context(UnableToQueryNotifications)
         })?;
@@ -124,6 +133,20 @@ impl Db {
                 text,
             })
             .collect())
+    }
+}
+
+trait LogQuery {
+    fn log_query(self) -> Self;
+}
+
+impl<T> LogQuery for T
+where
+    for<'a> diesel::query_builder::DebugQuery<'a, T, diesel::pg::Pg>: std::fmt::Display,
+{
+    fn log_query(self) -> Self {
+        trace!("Query: {}", diesel::debug_query::<diesel::pg::Pg, _>(&self));
+        self
     }
 }
 

@@ -2,6 +2,7 @@ use snafu::{ResultExt, Snafu};
 use std::{
     env,
     net::{IpAddr, SocketAddr},
+    time::Duration,
 };
 use url::Url;
 
@@ -10,6 +11,7 @@ pub struct Config {
     pub database_url: String,
     pub public_uri: Url,
     pub listen_address: SocketAddr,
+    pub caffeine_interval: Option<Duration>,
 }
 
 impl Config {
@@ -19,6 +21,7 @@ impl Config {
         let address = env::var("WEB_LISTEN_ADDRESS").context(UnknownWebListenAddress)?;
         let port = env::var("WEB_LISTEN_PORT").or_else(|_| env::var("PORT"));
         let port = port.context(UnknownWebListenPort)?;
+        let caffeine_interval = env::var("PREVENT_HEROKU_SLEEP").ok();
 
         let public_uri = Url::parse(&uri).context(InvalidWebPublicUri { uri })?;
         let address: IpAddr = address
@@ -26,11 +29,15 @@ impl Config {
             .context(InvalidWebListenAddress { address })?;
         let port = port.parse().context(InvalidWebListenPort { port })?;
         let listen_address = (address, port).into();
+        let caffeine_interval = caffeine_interval
+            .and_then(|i| i.parse().ok())
+            .map(Duration::from_secs);
 
         Ok(Self {
             database_url,
             public_uri,
             listen_address,
+            caffeine_interval,
         })
     }
 }

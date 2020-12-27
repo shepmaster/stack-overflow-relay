@@ -33,11 +33,11 @@ async fn core() -> Result<()> {
     dotenv::dotenv().ok();
 
     let config = Config::from_environment().context(UnableToConfigure)?;
-    let config = Box::leak(Box::new(config));
+    let config = &*Box::leak(Box::new(config));
 
     let so_config =
         stack_overflow::Config::from_environment().context(UnableToConfigureStackOverflow)?;
-    let so_config = Box::leak(Box::new(so_config));
+    let so_config = &*Box::leak(Box::new(so_config));
 
     let pushover_config =
         pushover::Config::from_environment().context(UnableToConfigurePushover)?;
@@ -63,9 +63,31 @@ async fn core() -> Result<()> {
         set_pushover_user_flow,
     ));
 
+    let caffeine_task = async {
+        match config.caffeine_interval {
+            Some(interval) => {
+                tokio::spawn(async move {
+                    let client = reqwest::Client::new();
+
+                    loop {
+                        let ping_url = config.public_uri.clone().join("/ping").expect("TODO");
+                        client.get(ping_url).send().await.expect("TODO");
+                        tokio::time::delay_for(interval).await;
+                    }
+                })
+                .await
+            }
+            None => futures::future::pending().await,
+        }
+    };
+
     tokio::select! {
         web_ui = web_ui => {
             web_ui.context(WebUiFailed)
+        }
+        caffeine_task = caffeine_task => {
+            caffeine_task.context(CaffeineFailed)?;
+            CaffeineExited.fail()
         }
         poll_spawner_task = poll_spawner_task => {
             poll_spawner_task.context(PollSpawnerFailed)?;
@@ -109,6 +131,12 @@ enum Error {
 
     #[snafu(display("The database failed and never should"))]
     DatabaseFailed { source: tokio::task::JoinError },
+
+    #[snafu(display("The caffeine task exited and never should"))]
+    CaffeineExited,
+
+    #[snafu(display("The caffeine task failed and never should"))]
+    CaffeineFailed { source: tokio::task::JoinError },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;

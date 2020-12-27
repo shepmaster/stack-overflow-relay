@@ -105,6 +105,8 @@ pub(crate) async fn serve(
 ) {
     let oauth = oauth::routes(config, so_config, register_flow);
 
+    let ping = warp::path!("ping").map(|| "pong");
+
     let auth_root = path::end()
         .and(auth_session())
         .map(|_session| warp::reply::html(html::auth_root().into_string()));
@@ -140,7 +142,7 @@ pub(crate) async fn serve(
             }
         });
 
-    let routes = oauth.or(root).or(user_me_post);
+    let routes = oauth.or(ping).or(root).or(user_me_post);
     let routes = routes.recover(report_invalid);
 
     info!("Starting web server at {}", &config.listen_address);

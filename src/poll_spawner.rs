@@ -9,8 +9,8 @@ use futures::{
     future::RemoteHandle,
     FutureExt, SinkExt, StreamExt,
 };
-use std::collections::HashMap;
-use tokio::task::JoinHandle;
+use std::{collections::HashMap, time::Duration};
+use tokio::{task::JoinHandle, time};
 use tracing::{trace, trace_span, warn, Instrument};
 
 #[derive(Debug)]
@@ -72,17 +72,21 @@ async fn poll_one_account(
 
         let so_client = stack_overflow::AuthClient::new(so_config.clone(), access_token);
 
-        let r = dbg!(so_client.unread_notifications().await).expect("TODO");
+        loop {
+            let r = so_client.unread_notifications().await.expect("TODO");
 
-        let r = r
-            .into_iter()
-            .map(|n| IncomingNotification {
-                account_id,
-                text: n.body,
-            })
-            .collect();
+            let r = r
+                .into_iter()
+                .map(|n| IncomingNotification {
+                    account_id,
+                    text: n.body,
+                })
+                .collect();
 
-        flow.notify(r).await.expect("TODO");
+            flow.notify(r).await.expect("TODO");
+
+            time::delay_for(Duration::from_secs(60)).await;
+        }
     }
     .instrument(s)
     .await

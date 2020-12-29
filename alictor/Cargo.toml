@@ -1,0 +1,20 @@
+[package]
+name = "alictor"
+version = "0.1.0"
+authors = ["Jake Goulding <jake.goulding@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+alictor-derive = { path = "alictor-derive", default-features = false }
+
+futures-channel = { version = "0.3", default-features = false, features = ["std", "alloc"] }
+futures-core = { version = "0.3", default-features = false, features = ["std"] }
+futures-executor = { version = "0.3", default-features = false, features = ["std"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+snafu = { version = "0.6.10", default-features = false, features = ["std"] }
+tokio = { version = "0.2.23", default-features = false, features = ["blocking", "rt-core"] }
+
+[workspace]
+members = ["alictor-derive"]

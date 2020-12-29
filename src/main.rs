@@ -45,13 +45,13 @@ async fn core() -> Result<()> {
     let database_url = &config.database_url;
     let conn = PgConnection::establish(database_url).context(UnableToConnect { database_url })?;
 
-    let (db, db_task) = database::spawn(database::Db::new(conn));
+    let (db, db_task) = database::Db::new(conn).spawn();
 
     let pushover = pushover_config.into_client();
     let notify_flow = flow::NotifyFlow::new(db.clone(), pushover);
 
     let (poll_spawner, poll_spawner_task) =
-        poll_spawner::spawn(poll_spawner::PollSpawner::new(so_config, notify_flow));
+        poll_spawner::PollSpawner::new(so_config, notify_flow).spawn();
 
     let mut boot_flow = flow::BootFlow::new(db.clone(), poll_spawner.clone());
     boot_flow.boot().await.context(UnableToBoot)?;

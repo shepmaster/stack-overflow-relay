@@ -7,6 +7,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee2a4ec343196209d6594e19543ae87a39f96d5534d7174822a3ad825dd6ed7e"
 
 [[package]]
+name = "alictor"
+version = "0.1.0"
+dependencies = [
+ "alictor-derive",
+ "futures-channel",
+ "futures-core",
+ "futures-executor",
+ "futures-util",
+ "snafu",
+ "tokio",
+]
+
+[[package]]
+name = "alictor-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "ansi_term"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -316,6 +338,17 @@ name = "futures-core"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "847ce131b72ffb13b6109a221da9ad97a64cbe48feb1028356b836b47b8f1748"
+
+[[package]]
+name = "futures-executor"
+version = "0.3.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4caa2b2b68b880003057c1dd49f1ed937e38f22fcf6c212188a121f08cf40a65"
+dependencies = [
+ "futures-core",
+ "futures-task",
+ "futures-util",
+]
 
 [[package]]
 name = "futures-io"
@@ -1319,6 +1352,7 @@ dependencies = [
 name = "stack-overflow-relay"
 version = "0.1.0"
 dependencies = [
+ "alictor",
  "diesel",
  "dotenv",
  "futures",

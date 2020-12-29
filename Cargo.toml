@@ -22,4 +22,4 @@ tracing = { version = "0.1.22", default-features = false, features = ["attribute
 tracing-subscriber = { version = "0.2.15", default-features = true }
 url = { version = "2.2.0", default-features = false }
 warp = { version = "0.2.5", default-features = false }
-hex = "0.4.2"
+hex = { version = "0.4.2", default-features = false }

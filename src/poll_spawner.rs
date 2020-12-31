@@ -1,10 +1,12 @@
 use crate::{
     domain::IncomingNotification,
+    error::{Breaker, IsTransient},
     flow::NotifyFlow,
     stack_overflow::{self, AccessToken, AccountId},
     GlobalStackOverflowConfig,
 };
 use futures::{future::RemoteHandle, FutureExt};
+use snafu::{ResultExt, Snafu};
 use std::{collections::HashMap, time::Duration};
 use tokio::time;
 use tracing::{trace, trace_span, warn, Instrument};
@@ -50,8 +52,17 @@ impl PollSpawner {
         // `remote_handle` should kill the future when the
         // `handle` is dropped, which will happen if we replace
         // the hashmap entry for the same account.
-        let (work, handle) =
-            poll_one_account(so_config, account_id, access_token, flow.clone()).remote_handle();
+        let (work, handle) = {
+            let so_config = *so_config;
+            let flow = flow.clone();
+
+            async move {
+                poll_one_account(so_config, account_id, access_token, flow)
+                    .await
+                    .expect("TODO");
+            }
+        }
+        .remote_handle();
         tokio::spawn(work);
         let old_work = pollers.insert(account_id, handle);
 
@@ -68,25 +79,37 @@ async fn poll_one_account(
     account_id: AccountId,
     access_token: AccessToken,
     mut flow: NotifyFlow,
-) {
+) -> Result<()> {
     let s = trace_span!("poll_one_account", account_id = account_id.0);
     async {
         trace!("Starting polling");
 
         let so_client = stack_overflow::AuthClient::new(so_config.clone(), access_token);
+        let mut breaker = Breaker::default();
 
         loop {
-            let r = so_client.unread_notifications().await.expect("TODO");
+            let attempt = breaker.run(async {
+                let r = so_client
+                    .unread_notifications()
+                    .await
+                    .context(UnableToGetUnreadNotifications)?;
 
-            let r = r
-                .into_iter()
-                .map(|n| IncomingNotification {
-                    account_id,
-                    text: n.body,
-                })
-                .collect();
+                let r = r
+                    .into_iter()
+                    .map(|n| IncomingNotification {
+                        account_id,
+                        text: n.body,
+                    })
+                    .collect();
 
-            flow.notify(r).await.expect("TODO");
+                flow.notify(r).await.context(UnableToSendNotifications)?;
+
+                Ok(())
+            });
+
+            if let Some(attempt) = attempt.await.context(TooManyTransientFailures)? {
+                attempt?;
+            }
 
             time::delay_for(Duration::from_secs(60)).await;
         }
@@ -94,3 +117,24 @@ async fn poll_one_account(
     .instrument(s)
     .await
 }
+
+#[derive(Debug, Snafu)]
+enum Error {
+    UnableToGetUnreadNotifications { source: stack_overflow::Error },
+
+    UnableToSendNotifications { source: crate::flow::Error },
+
+    TooManyTransientFailures { source: crate::error::BreakerError },
+}
+
+impl IsTransient for Error {
+    fn is_transient(&self) -> bool {
+        match self {
+            Self::UnableToGetUnreadNotifications { source } => source.is_transient(),
+            Self::UnableToSendNotifications { source } => source.is_transient(),
+            Self::TooManyTransientFailures { .. } => false,
+        }
+    }
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;

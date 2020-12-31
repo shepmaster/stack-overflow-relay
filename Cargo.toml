@@ -12,6 +12,8 @@ alictor = { path = "alictor", default-features = false }
 diesel = { version = "1.4.5", default-features = false, features = ["postgres"] }
 dotenv = { version = "0.15.0", default-features = false }
 futures = { version = "0.3.8", default-features = false, features = ["std"] }
+hex = { version = "0.4.2", default-features = false }
+hyper = { version = "0.13.9", default-features = false }
 maud = { version = "0.22.1", default-features = false }
 once_cell = { version = "1.5.2", default-features = false, features = ["std"] }
 parking_lot = { version = "0.11.1", default-features = false }
@@ -24,4 +26,3 @@ tracing = { version = "0.1.22", default-features = false, features = ["attribute
 tracing-subscriber = { version = "0.2.15", default-features = true }
 url = { version = "2.2.0", default-features = false }
 warp = { version = "0.2.5", default-features = false }
-hex = { version = "0.4.2", default-features = false }

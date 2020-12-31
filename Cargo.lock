@@ -1357,6 +1357,7 @@ dependencies = [
  "dotenv",
  "futures",
  "hex",
+ "hyper",
  "maud",
  "once_cell",
  "parking_lot",

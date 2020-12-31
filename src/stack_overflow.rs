@@ -1,3 +1,4 @@
+use crate::error::IsTransient;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt, Snafu};
 use std::env;
@@ -432,6 +433,15 @@ pub enum Error {
     UnreadRequestFailed {
         source: ApiError,
     },
+}
+
+impl IsTransient for Error {
+    fn is_transient(&self) -> bool {
+        match self {
+            Self::UnableToExecuteUnreadRequest { source } => source.is_transient(),
+            _ => false,
+        }
+    }
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;

@@ -11,6 +11,7 @@ pub use config::Config;
 mod config;
 mod database;
 mod domain;
+mod error;
 mod flow;
 mod poll_spawner;
 mod pushover;

@@ -1,4 +1,4 @@
-use crate::domain::OutgoingNotification;
+use crate::{domain::OutgoingNotification, error::IsTransient};
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use std::env;
@@ -91,6 +91,15 @@ pub enum Error {
     UnableToSendNotification {
         source: reqwest::Error,
     },
+}
+
+impl IsTransient for Error {
+    fn is_transient(&self) -> bool {
+        match self {
+            Self::UnableToSendNotification { source } => source.is_transient(),
+            _ => false,
+        }
+    }
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;

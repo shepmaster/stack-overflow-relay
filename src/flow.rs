@@ -1,6 +1,7 @@
 use crate::{
     database::DbHandle,
     domain::{AccountId, IncomingNotification, UserKey},
+    error::IsTransient,
     poll_spawner::PollSpawnerHandle,
     pushover, GlobalStackOverflowConfig,
 };
@@ -173,6 +174,15 @@ pub enum Error {
     UnableToDeliverNotifications {
         source: crate::pushover::Error,
     },
+}
+
+impl IsTransient for Error {
+    fn is_transient(&self) -> bool {
+        match self {
+            Self::UnableToDeliverNotifications { source } => source.is_transient(),
+            _ => false,
+        }
+    }
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;

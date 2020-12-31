@@ -278,7 +278,11 @@ mod oauth {
             .and(session())
             .and_then(move |mut session: Session| async move {
                 let rng = rand::rngs::StdRng::from_entropy();
-                let state: String = rng.sample_iter(&Alphanumeric).take(64).collect();
+                let state: String = rng
+                    .sample_iter(&Alphanumeric)
+                    .take(64)
+                    .map(char::from)
+                    .collect();
 
                 session.set_oauth_state(state.clone());
                 SESSIONS.lock().save(session);

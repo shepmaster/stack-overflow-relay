@@ -17,7 +17,7 @@ hyper = { version = "0.13.9", default-features = false }
 maud = { version = "0.22.1", default-features = false }
 once_cell = { version = "1.5.2", default-features = false, features = ["std"] }
 parking_lot = { version = "0.11.1", default-features = false }
-rand = { version = "0.7.3", default-features = false, features = ["std"] }
+rand = { version = "0.8.0", default-features = false, features = ["std", "std_rng"] }
 reqwest = { version = "0.10.10", default-features = false, features = ["default-tls", "gzip", "json"] }
 serde = { version = "1.0.118", default-features = false }
 snafu = { version = "0.6.10", default-features = false, features = ["std"] }

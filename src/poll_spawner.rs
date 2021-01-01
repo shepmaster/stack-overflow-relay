@@ -1,9 +1,7 @@
 use crate::{
-    domain::IncomingNotification,
-    error::{Breaker, IsTransient},
-    flow::NotifyFlow,
-    stack_overflow::{self, AccessToken, AccountId},
-    GlobalStackOverflowConfig,
+    error::Breaker,
+    flow::{ProxyNotificationsAuthFlow, ProxyNotificationsFlow},
+    stack_overflow::{AccessToken, AccountId},
 };
 use futures::{
     channel::mpsc,
@@ -18,17 +16,16 @@ use tracing::{trace, trace_span, warn, Instrument};
 
 #[derive(Debug)]
 pub struct PollSpawner {
-    so_config: GlobalStackOverflowConfig,
-    flow: NotifyFlow,
+    flow: ProxyNotificationsFlow,
 }
 
 impl PollSpawner {
-    pub fn new(so_config: GlobalStackOverflowConfig, flow: NotifyFlow) -> Self {
-        Self { so_config, flow }
+    pub fn new(flow: ProxyNotificationsFlow) -> Self {
+        Self { flow }
     }
 
     pub(crate) fn spawn(self) -> (PollSpawnerHandle, JoinHandle<Result<()>>) {
-        let Self { so_config, flow } = self;
+        let Self { flow } = self;
 
         let (tx, mut rx) = mpsc::channel(10);
 
@@ -41,7 +38,9 @@ impl PollSpawner {
                     (account_id, access_token) = rx.select_next_some() => {
                         trace!("Starting new polling task");
 
-                        let work = poll_one_account(so_config, account_id, access_token, flow.clone());
+                        let flow = flow.clone().auth(account_id, access_token);
+
+                        let work = poll_one_account(flow, account_id);
                         let (work, abort_handle) = future::abortable(work);
 
                         children.push(tokio::spawn(work));
@@ -67,40 +66,20 @@ impl PollSpawner {
 }
 
 async fn poll_one_account(
-    so_config: GlobalStackOverflowConfig,
+    mut flow: ProxyNotificationsAuthFlow,
     account_id: AccountId,
-    access_token: AccessToken,
-    mut flow: NotifyFlow,
 ) -> Result<()> {
     let s = trace_span!("poll_one_account", account_id = account_id.0);
     async {
         trace!("Starting polling");
 
-        let so_client = stack_overflow::AuthClient::new(so_config.clone(), access_token);
         let mut breaker = Breaker::default();
 
         loop {
-            let attempt = breaker.run(async {
-                let r = so_client
-                    .unread_notifications()
-                    .await
-                    .context(UnableToGetUnreadNotifications)?;
-
-                let r = r
-                    .into_iter()
-                    .map(|n| IncomingNotification {
-                        account_id,
-                        text: n.body,
-                    })
-                    .collect();
-
-                flow.notify(r).await.context(UnableToSendNotifications)?;
-
-                Ok(())
-            });
+            let attempt = breaker.run(flow.proxy());
 
             if let Some(attempt) = attempt.await.context(TooManyTransientFailures)? {
-                attempt?;
+                attempt.context(UnableToProxyNotifications)?;
             }
 
             time::delay_for(Duration::from_secs(60)).await;
@@ -148,22 +127,9 @@ impl PollSpawnerHandle {
 pub(crate) enum Error {
     ChildFailed { source: tokio::task::JoinError },
 
-    UnableToGetUnreadNotifications { source: stack_overflow::Error },
-
-    UnableToSendNotifications { source: crate::flow::Error },
+    UnableToProxyNotifications { source: crate::flow::Error },
 
     TooManyTransientFailures { source: crate::error::BreakerError },
-}
-
-impl IsTransient for Error {
-    fn is_transient(&self) -> bool {
-        match self {
-            Self::ChildFailed { .. } => false,
-            Self::UnableToGetUnreadNotifications { source } => source.is_transient(),
-            Self::UnableToSendNotifications { source } => source.is_transient(),
-            Self::TooManyTransientFailures { .. } => false,
-        }
-    }
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;

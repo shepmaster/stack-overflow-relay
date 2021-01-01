@@ -105,34 +105,93 @@ impl SetPushoverUserFlow {
 }
 
 #[derive(Debug, Clone)]
-pub struct NotifyFlow {
+pub struct ProxyNotificationsFlow {
+    so_config: GlobalStackOverflowConfig,
     db: DbHandle,
     pushover: pushover::Client,
 }
 
-impl NotifyFlow {
-    pub fn new(db: DbHandle, pushover: pushover::Client) -> Self {
-        Self { db, pushover }
+impl ProxyNotificationsFlow {
+    pub fn new(
+        so_config: GlobalStackOverflowConfig,
+        db: DbHandle,
+        pushover: pushover::Client,
+    ) -> Self {
+        Self {
+            so_config,
+            db,
+            pushover,
+        }
     }
 
-    pub async fn notify(&mut self, notifications: Vec<IncomingNotification>) -> Result<()> {
+    pub fn auth(
+        self,
+        account_id: AccountId,
+        access_token: crate::stack_overflow::AccessToken,
+    ) -> ProxyNotificationsAuthFlow {
+        let Self {
+            so_config,
+            db,
+            pushover,
+        } = self;
+
+        let so_client = crate::stack_overflow::AuthClient::new(so_config.clone(), access_token);
+
+        ProxyNotificationsAuthFlow {
+            so_client,
+            db,
+            pushover,
+            account_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProxyNotificationsAuthFlow {
+    so_client: crate::stack_overflow::AuthClient,
+    db: DbHandle,
+    pushover: pushover::Client,
+    account_id: AccountId,
+}
+
+impl ProxyNotificationsAuthFlow {
+    pub async fn proxy(&mut self) -> Result<()> {
         let s = trace_span!("notify");
-        let Self { db, pushover } = self;
+        let Self {
+            so_client,
+            db,
+            pushover,
+            account_id,
+        } = self;
+        let account_id = *account_id;
 
         async {
+            let notifications = so_client
+                .unread_notifications()
+                .await
+                .context(UnableToGetUnreadNotifications)?;
             if notifications.is_empty() {
                 trace!("No notifications present");
                 return Ok(());
             };
+
+            let notifications = notifications
+                .into_iter()
+                .map(|n| IncomingNotification {
+                    account_id,
+                    text: n.body,
+                })
+                .collect();
+
             let new_notifications = db
                 .add_new_notifications(notifications)
                 .await
                 .context(UnableToPersistNotifications)?;
-
             if new_notifications.is_empty() {
                 trace!("All notifications have been seen");
                 return Ok(());
             }
+
             pushover
                 .notify(new_notifications)
                 .await
@@ -167,6 +226,10 @@ pub enum Error {
         source: crate::database::Error,
     },
 
+    UnableToGetUnreadNotifications {
+        source: crate::stack_overflow::Error,
+    },
+
     UnableToPersistNotifications {
         source: crate::database::Error,
     },
@@ -179,6 +242,7 @@ pub enum Error {
 impl IsTransient for Error {
     fn is_transient(&self) -> bool {
         match self {
+            Self::UnableToGetUnreadNotifications { source } => source.is_transient(),
             Self::UnableToDeliverNotifications { source } => source.is_transient(),
             _ => false,
         }

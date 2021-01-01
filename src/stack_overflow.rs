@@ -266,11 +266,13 @@ struct AuthParams<'a, T> {
     request_params: T,
 }
 
+#[derive(Debug, Clone)]
 pub struct AuthClient {
     client: reqwest::Client,
     auth_config: AuthConfig,
 }
 
+#[derive(Debug, Clone)]
 struct AuthConfig {
     access_token: AccessToken,
     config: Config,

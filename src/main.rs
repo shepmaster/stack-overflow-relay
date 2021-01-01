@@ -94,7 +94,7 @@ async fn core() -> Result<()> {
             CaffeineExited.fail()
         }
         poll_spawner_task = poll_spawner_task => {
-            poll_spawner_task.context(PollSpawnerFailed)?;
+            poll_spawner_task.context(PollSpawnerFailed)?.context(PollSpawnerErrored)?;
             PollSpawnerExited.fail()
         }
         db_task = db_task => {
@@ -132,6 +132,9 @@ enum Error {
 
     #[snafu(display("The poll spawner failed and never should"))]
     PollSpawnerFailed { source: tokio::task::JoinError },
+
+    #[snafu(display("The poll spawner errored and never should"))]
+    PollSpawnerErrored { source: poll_spawner::Error },
 
     #[snafu(display("The database exited and never should"))]
     DatabaseExited,

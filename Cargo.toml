@@ -11,7 +11,7 @@ alictor = { path = "alictor", default-features = false }
 
 diesel = { version = "1.4.5", default-features = false, features = ["postgres"] }
 dotenv = { version = "0.15.0", default-features = false }
-futures = { version = "0.3.8", default-features = false, features = ["std"] }
+futures = { version = "0.3.8", default-features = false, features = [ "async-await", "std"] }
 hex = { version = "0.4.2", default-features = false }
 hyper = { version = "0.13.9", default-features = false }
 maud = { version = "0.22.1", default-features = false }

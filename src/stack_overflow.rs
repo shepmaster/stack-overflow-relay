@@ -1,6 +1,7 @@
 use crate::error::IsTransient;
+use futures::{future::BoxFuture, FutureExt};
 use serde::{Deserialize, Serialize};
-use snafu::{ensure, OptionExt, ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 use std::env;
 use url::Url;
 
@@ -244,11 +245,10 @@ impl UnauthClient {
             .form(&params)
             .send()
             .await
-            .context(UnableToExecuteAccessTokenRequest)?;
-
-        ensure!(res.status().is_success(), AccessTokenRequestRejected);
-
-        let res = res
+            .context(UnableToExecuteAccessTokenRequest)?
+            .ensure_success()
+            .await
+            .context(AccessTokenRequestRejected)?
             .json::<AccessTokenResponse>()
             .await
             .context(UnableToDeserializeAccessTokenRequest)?;
@@ -331,6 +331,9 @@ impl AuthClient {
             .send()
             .await
             .context(UnableToExecuteCurrentUserRequest)?
+            .ensure_success()
+            .await
+            .context(CurrentUserRequestRejected)?
             .json::<Wrapper<User>>()
             .await
             .context(UnableToDeserializeCurrentUserRequest)?
@@ -361,6 +364,9 @@ impl AuthClient {
             .send()
             .await
             .context(UnableToExecuteUnreadRequest)?
+            .ensure_success()
+            .await
+            .context(UnreadRequestRejected)?
             .json::<Wrapper<Notification>>()
             .await
             .context(UnableToDeserializeUnreadRequest)?
@@ -368,6 +374,50 @@ impl AuthClient {
             .context(UnreadRequestFailed)?;
 
         Ok(r.items)
+    }
+}
+
+#[derive(Debug, Snafu)]
+#[snafu(display(
+    "NotSuccess: {:?} {} {} {:?} {}",
+    status,
+    res,
+    headers,
+    body,
+    String::from_utf8_lossy(body)
+))]
+pub struct NotSuccess {
+    status: reqwest::StatusCode,
+    res: String,
+    headers: String,
+    body: Vec<u8>,
+}
+
+trait EnsureSuccess: Sized {
+    fn ensure_success(self) -> BoxFuture<'static, Result<Self, NotSuccess>>;
+}
+
+impl EnsureSuccess for reqwest::Response {
+    fn ensure_success(self) -> BoxFuture<'static, Result<Self, NotSuccess>> {
+        async {
+            let status = self.status();
+            if !status.is_success() {
+                let res = format!("{:?}", self);
+                let headers = format!("{:?}", self.headers());
+                let body = self.bytes().await.unwrap_or_default();
+
+                NotSuccessContext {
+                    status,
+                    res,
+                    headers,
+                    body: &body[..],
+                }
+                .fail()
+            } else {
+                Ok(self)
+            }
+        }
+        .boxed()
     }
 }
 
@@ -404,14 +454,20 @@ pub enum Error {
         source: reqwest::Error,
     },
 
+    AccessTokenRequestRejected {
+        source: NotSuccess,
+    },
+
     UnableToDeserializeAccessTokenRequest {
         source: reqwest::Error,
     },
 
-    AccessTokenRequestRejected,
-
     UnableToExecuteCurrentUserRequest {
         source: reqwest::Error,
+    },
+
+    CurrentUserRequestRejected {
+        source: NotSuccess,
     },
 
     UnableToDeserializeCurrentUserRequest {
@@ -426,6 +482,10 @@ pub enum Error {
 
     UnableToExecuteUnreadRequest {
         source: reqwest::Error,
+    },
+
+    UnreadRequestRejected {
+        source: NotSuccess,
     },
 
     UnableToDeserializeUnreadRequest {

@@ -49,6 +49,7 @@ impl Client {
             user: &'a UserKey,
             title: &'a str,
             message: &'a str,
+            html: u8,
         }
 
         async {
@@ -59,6 +60,7 @@ impl Client {
                 user: &n.user,
                 title: "Stack Overflow notification",
                 message: &n.text,
+                html: 1,
             });
 
             for n in notifications {

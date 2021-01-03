@@ -3,6 +3,7 @@ use futures::{future::BoxFuture, FutureExt};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use std::env;
+use tracing::{trace, trace_span, Instrument};
 use url::Url;
 
 const OAUTH_ENTRY_URI: &str = "https://stackoverflow.com/oauth";
@@ -311,69 +312,83 @@ impl AuthClient {
     }
 
     pub async fn current_user(&self) -> Result<User> {
-        let Self {
-            client,
-            auth_config,
-        } = self;
+        let s = trace_span!("current_user");
 
-        #[derive(Debug, Serialize)]
-        struct CurrentUserParams<'a> {
-            filter: &'a str,
+        async {
+            let Self {
+                client,
+                auth_config,
+            } = self;
+
+            #[derive(Debug, Serialize)]
+            struct CurrentUserParams<'a> {
+                filter: &'a str,
+            }
+
+            let params = auth_config.auth_params(CurrentUserParams {
+                filter: FILTER_DEFAULT,
+            });
+
+            client
+                .get(auth_config.config.current_user.clone())
+                .query(&params)
+                .send()
+                .await
+                .context(UnableToExecuteCurrentUserRequest)?
+                .ensure_success()
+                .await
+                .context(CurrentUserRequestRejected)?
+                .json::<Wrapper<User>>()
+                .await
+                .context(UnableToDeserializeCurrentUserRequest)?
+                .into_result()
+                .context(CurrentUserRequestFailed)?
+                .trace_quota()
+                .into_singleton()
+                .context(CurrentUserRequestDidNotHaveOneResult)
         }
-
-        let params = auth_config.auth_params(CurrentUserParams {
-            filter: FILTER_DEFAULT,
-        });
-
-        client
-            .get(auth_config.config.current_user.clone())
-            .query(&params)
-            .send()
-            .await
-            .context(UnableToExecuteCurrentUserRequest)?
-            .ensure_success()
-            .await
-            .context(CurrentUserRequestRejected)?
-            .json::<Wrapper<User>>()
-            .await
-            .context(UnableToDeserializeCurrentUserRequest)?
-            .into_result()
-            .context(CurrentUserRequestFailed)?
-            .into_singleton()
-            .context(CurrentUserRequestDidNotHaveOneResult)
+        .instrument(s)
+        .await
     }
 
     pub async fn unread_notifications(&self) -> Result<Vec<Notification>> {
-        let Self {
-            client,
-            auth_config,
-        } = self;
+        let s = trace_span!("unread_notifications");
 
-        #[derive(Debug, Serialize)]
-        struct UnreadParams<'a> {
-            filter: &'a str,
+        async {
+            let Self {
+                client,
+                auth_config,
+            } = self;
+
+            #[derive(Debug, Serialize)]
+            struct UnreadParams<'a> {
+                filter: &'a str,
+            }
+
+            let params = auth_config.auth_params(UnreadParams {
+                filter: FILTER_DEFAULT,
+            });
+
+            let r = client
+                .get(auth_config.config.unread.clone())
+                .query(&params)
+                .send()
+                .await
+                .context(UnableToExecuteUnreadRequest)?
+                .ensure_success()
+                .await
+                .context(UnreadRequestRejected)?
+                .json::<Wrapper<Notification>>()
+                .await
+                .context(UnableToDeserializeUnreadRequest)?
+                .into_result()
+                .context(UnreadRequestFailed)?
+                .trace_quota();
+
+            Ok(r.items)
         }
-
-        let params = auth_config.auth_params(UnreadParams {
-            filter: FILTER_DEFAULT,
-        });
-
-        let r = client
-            .get(auth_config.config.unread.clone())
-            .query(&params)
-            .send()
-            .await
-            .context(UnableToExecuteUnreadRequest)?
-            .ensure_success()
-            .await
-            .context(UnreadRequestRejected)?
-            .json::<Wrapper<Notification>>()
-            .await
-            .context(UnableToDeserializeUnreadRequest)?
-            .into_result()
-            .context(UnreadRequestFailed)?;
-
-        Ok(r.items)
+        .instrument(s)
+        .await
     }
 }
 
@@ -418,6 +433,17 @@ impl EnsureSuccess for reqwest::Response {
             }
         }
         .boxed()
+    }
+}
+
+trait TraceQuota {
+    fn trace_quota(self) -> Self;
+}
+
+impl<T> TraceQuota for ApiSuccess<T> {
+    fn trace_quota(self) -> Self {
+        trace!("{:?}", self.quota);
+        self
     }
 }
 

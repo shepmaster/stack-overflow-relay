@@ -187,7 +187,7 @@ impl Config {
 
     pub fn into_unauth_client(self) -> UnauthClient {
         UnauthClient {
-            client: reqwest::Client::new(),
+            client: super::reqwest_client(),
             config: self,
         }
     }
@@ -299,7 +299,7 @@ impl AuthConfig {
 impl AuthClient {
     pub fn new(config: Config, access_token: AccessToken) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: super::reqwest_client(),
             auth_config: AuthConfig {
                 access_token,
                 config,

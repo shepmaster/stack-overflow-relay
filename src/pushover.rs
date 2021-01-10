@@ -26,7 +26,7 @@ impl Config {
 
     pub fn into_client(self) -> Client {
         Client {
-            client: reqwest::Client::new(),
+            client: super::reqwest_client(),
             config: self,
         }
     }

@@ -70,7 +70,7 @@ async fn core() -> Result<()> {
         match config.caffeine_interval {
             Some(interval) => {
                 tokio::spawn(async move {
-                    let client = reqwest::Client::new();
+                    let client = reqwest_client();
 
                     loop {
                         let ping_url = config.public_uri.clone().join("/ping").expect("TODO");
@@ -101,6 +101,15 @@ async fn core() -> Result<()> {
             DatabaseExited.fail()
         }
     }
+}
+
+const USER_AGENT: &str = concat!("stack-overflow-relay (version:", env!("VERGEN_SHA"), ")");
+
+fn reqwest_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .expect("Unable to configure reqwest::Client")
 }
 
 #[derive(Debug, Snafu)]

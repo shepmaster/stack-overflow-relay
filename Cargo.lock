@@ -1435,6 +1435,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "vergen",
  "warp",
 ]
 
@@ -1712,6 +1713,16 @@ name = "vcpkg"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b00bca6106a5e23f3eee943593759b7fcddb00554332e856d990c893966879fb"
+
+[[package]]
+name = "vergen"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ce50d8996df1f85af15f2cd8d33daae6e479575123ef4314a51a70a230739cb"
+dependencies = [
+ "bitflags",
+ "chrono",
+]
 
 [[package]]
 name = "version_check"

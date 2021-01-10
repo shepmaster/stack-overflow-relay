@@ -24,6 +24,12 @@ type GlobalStackOverflowConfig = &'static stack_overflow::Config;
 fn main() {
     if let Err(e) = core() {
         eprintln!("Error: {}", e);
+        let mut e = &e as &dyn std::error::Error;
+        while let Some(e2) = e.source() {
+            e = e2;
+            eprintln!("     : {}", e);
+        }
+
         std::process::exit(1);
     }
 }

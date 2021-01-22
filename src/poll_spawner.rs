@@ -82,7 +82,7 @@ async fn poll_one_account(
                 attempt.context(UnableToProxyNotifications)?;
             }
 
-            time::delay_for(Duration::from_secs(60)).await;
+            time::sleep(Duration::from_secs(60)).await;
         }
     }
     .instrument(s)

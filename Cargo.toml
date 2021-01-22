@@ -16,16 +16,16 @@ diesel = { version = "1.4.5", default-features = false, features = ["postgres"] 
 dotenv = { version = "0.15.0", default-features = false }
 futures = { version = "0.3.9", default-features = false, features = [ "async-await", "std"] }
 hex = { version = "0.4.2", default-features = false }
-hyper = { version = "0.13.9", default-features = false }
+hyper = { version = "0.14.2", default-features = false }
 maud = { version = "0.22.2", default-features = false }
 once_cell = { version = "1.5.2", default-features = false, features = ["std"] }
 parking_lot = { version = "0.11.1", default-features = false }
 rand = { version = "0.8.1", default-features = false, features = ["std", "std_rng"] }
-reqwest = { version = "0.10.10", default-features = false, features = ["default-tls", "gzip", "json"] }
+reqwest = { version = "0.11.0", default-features = false, features = ["default-tls", "gzip", "json"] }
 serde = { version = "1.0.118", default-features = false, features = ["derive"] }
 snafu = { version = "0.6.10", default-features = false, features = ["std"] }
-tokio = { version = "0.2.24", default-features = false, features = ["macros", "blocking", "rt-threaded"] }
+tokio = { version = "1.1.0", default-features = false, features = ["rt", "macros", "rt-multi-thread", "time"] }
 tracing = { version = "0.1.22", default-features = false, features = ["attributes"] }
 tracing-subscriber = { version = "0.2.15", default-features = true }
 url = { version = "2.2.0", default-features = false }
-warp = { version = "0.2.5", default-features = false }
+warp = { version = "0.3.0", default-features = false }

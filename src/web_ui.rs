@@ -239,12 +239,6 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl warp::reject::Reject for Error {}
 
-impl From<Error> for warp::Rejection {
-    fn from(other: Error) -> Self {
-        warp::reject::custom(other)
-    }
-}
-
 mod oauth {
     use super::{
         redirect_to, session, Result, Session, StateParameterMismatch, UnableToBuildRedirectUri,

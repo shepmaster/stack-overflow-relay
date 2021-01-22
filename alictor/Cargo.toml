@@ -14,7 +14,7 @@ futures-core = { version = "0.3", default-features = false, features = ["std"] }
 futures-executor = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
 snafu = { version = "0.6.10", default-features = false, features = ["std"] }
-tokio = { version = "0.2.23", default-features = false, features = ["blocking", "rt-core"] }
+tokio = { version = "1.0", default-features = false, features = ["rt"] }
 
 [workspace]
 members = ["alictor-derive"]

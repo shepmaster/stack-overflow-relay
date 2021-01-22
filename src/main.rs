@@ -81,7 +81,7 @@ async fn core() -> Result<()> {
                     loop {
                         let ping_url = config.public_uri.clone().join("/ping").expect("TODO");
                         client.get(ping_url).send().await.expect("TODO");
-                        tokio::time::delay_for(interval).await;
+                        tokio::time::sleep(interval).await;
                     }
                 })
                 .await

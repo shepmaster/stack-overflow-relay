@@ -109,7 +109,7 @@ async fn core() -> Result<()> {
     }
 }
 
-const USER_AGENT: &str = concat!("stack-overflow-relay (version:", env!("VERGEN_SHA"), ")");
+const USER_AGENT: &str = concat!("stack-overflow-relay (version:", env!("VERGEN_GIT_SHA"), ")");
 
 fn reqwest_client() -> reqwest::Client {
     reqwest::Client::builder()

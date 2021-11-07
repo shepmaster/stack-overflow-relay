@@ -5,7 +5,7 @@ use crate::{
     poll_spawner::PollSpawnerHandle,
     pushover, GlobalStackOverflowConfig,
 };
-use snafu::{futures::TryFutureExt, ResultExt, Snafu};
+use snafu::{ResultExt, Snafu};
 use tracing::{trace, trace_span, Instrument};
 
 #[derive(Debug, Clone)]
@@ -66,10 +66,7 @@ impl RegisterFlow {
 
         let so_client = so_client.into_auth_client(resp);
 
-        let resp = so_client
-            .current_user()
-            .await
-            .context(UnableToGetCurrentUser)?;
+        let resp = so_client.current_user().await?;
 
         let account_id = resp.account_id;
         let access_token = so_client.access_token().clone();
@@ -166,12 +163,7 @@ impl ProxyNotificationsAuthFlow {
         let account_id = *account_id;
 
         async {
-            let (a, b) = futures::join!(
-                so_client
-                    .unread_notifications()
-                    .context(UnableToGetUnreadNotifications),
-                so_client.unread_inbox().context(UnableToGetUnreadInbox),
-            );
+            let (a, b) = futures::join!(so_client.unread_notifications(), so_client.unread_inbox());
 
             let a = a?.into_iter().map(|n| IncomingNotification {
                 account_id,
@@ -221,8 +213,9 @@ pub enum Error {
         source: crate::stack_overflow::Error,
     },
 
+    #[snafu(context(false))]
     UnableToGetCurrentUser {
-        source: crate::stack_overflow::Error,
+        source: crate::stack_overflow::CurrentUserError,
     },
 
     UnableToPersistRegistration {
@@ -233,12 +226,14 @@ pub enum Error {
         source: crate::database::Error,
     },
 
+    #[snafu(context(false))]
     UnableToGetUnreadNotifications {
-        source: crate::stack_overflow::Error,
+        source: crate::stack_overflow::UnreadNotificationsError,
     },
 
+    #[snafu(context(false))]
     UnableToGetUnreadInbox {
-        source: crate::stack_overflow::Error,
+        source: crate::stack_overflow::UnreadInboxError,
     },
 
     UnableToPersistNotifications {
@@ -254,6 +249,7 @@ impl IsTransient for Error {
     fn is_transient(&self) -> bool {
         match self {
             Self::UnableToGetUnreadNotifications { source } => source.is_transient(),
+            Self::UnableToGetUnreadInbox { source } => source.is_transient(),
             Self::UnableToDeliverNotifications { source } => source.is_transient(),
             _ => false,
         }

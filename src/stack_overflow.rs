@@ -345,7 +345,7 @@ impl AuthClient {
         &self.auth_config.access_token
     }
 
-    pub async fn current_user(&self) -> Result<User> {
+    pub async fn current_user(&self) -> Result<User, CurrentUserError> {
         let s = trace_span!("current_user");
 
         async {
@@ -368,24 +368,26 @@ impl AuthClient {
                 .query(&params)
                 .send()
                 .await
-                .context(UnableToExecuteCurrentUserRequest)?
+                .context(UnableToExecuteRequest)?
                 .ensure_success()
                 .await
-                .context(CurrentUserRequestRejected)?
+                .context(RequestRejected)?
                 .json::<Wrapper<User>>()
                 .await
-                .context(UnableToDeserializeCurrentUserRequest)?
+                .context(UnableToDeserializeRequest)?
                 .into_result()
-                .context(CurrentUserRequestFailed)?
+                .context(RequestFailed)?
                 .trace_quota()
                 .into_singleton()
-                .context(CurrentUserRequestDidNotHaveOneResult)
+                .context(RequestDidNotHaveOneResult)
         }
         .instrument(s)
         .await
     }
 
-    pub async fn unread_notifications(&self) -> Result<Vec<Notification>> {
+    pub async fn unread_notifications(
+        &self,
+    ) -> Result<Vec<Notification>, UnreadNotificationsError> {
         let s = trace_span!("unread_notifications");
 
         async {
@@ -408,15 +410,15 @@ impl AuthClient {
                 .query(&params)
                 .send()
                 .await
-                .context(UnableToExecuteUnreadNotificationRequest)?
+                .context(UnableToExecuteRequest)?
                 .ensure_success()
                 .await
-                .context(UnreadNotificationRequestRejected)?
+                .context(RequestRejected)?
                 .json::<Wrapper<Notification>>()
                 .await
-                .context(UnableToDeserializeUnreadNotificationRequest)?
+                .context(UnableToDeserializeRequest)?
                 .into_result()
-                .context(UnreadNotificationRequestFailed)?
+                .context(RequestFailed)?
                 .trace_quota();
 
             Ok(r.items)
@@ -425,7 +427,7 @@ impl AuthClient {
         .await
     }
 
-    pub async fn unread_inbox(&self) -> Result<Vec<Inbox>> {
+    pub async fn unread_inbox(&self) -> Result<Vec<Inbox>, UnreadInboxError> {
         let s = trace_span!("unread_inbox");
 
         async {
@@ -448,15 +450,15 @@ impl AuthClient {
                 .query(&params)
                 .send()
                 .await
-                .context(UnableToExecuteUnreadInboxRequest)?
+                .context(UnableToExecuteRequest)?
                 .ensure_success()
                 .await
-                .context(UnreadInboxRequestRejected)?
+                .context(RequestRejected)?
                 .json::<Wrapper<Inbox>>()
                 .await
-                .context(UnableToDeserializeUnreadInboxRequest)?
+                .context(UnableToDeserializeRequest)?
                 .into_result()
-                .context(UnreadInboxRequestFailed)?
+                .context(RequestFailed)?
                 .trace_quota();
 
             Ok(r.items)
@@ -565,66 +567,54 @@ pub enum Error {
     UnableToDeserializeAccessTokenRequest {
         source: reqwest::Error,
     },
-
-    UnableToExecuteCurrentUserRequest {
-        source: reqwest::Error,
-    },
-
-    CurrentUserRequestRejected {
-        source: NotSuccess,
-    },
-
-    UnableToDeserializeCurrentUserRequest {
-        source: reqwest::Error,
-    },
-
-    CurrentUserRequestFailed {
-        source: ApiError,
-    },
-
-    CurrentUserRequestDidNotHaveOneResult {},
-
-    UnableToExecuteUnreadNotificationRequest {
-        source: reqwest::Error,
-    },
-
-    UnreadNotificationRequestRejected {
-        source: NotSuccess,
-    },
-
-    UnableToDeserializeUnreadNotificationRequest {
-        source: reqwest::Error,
-    },
-
-    UnreadNotificationRequestFailed {
-        source: ApiError,
-    },
-
-    UnableToExecuteUnreadInboxRequest {
-        source: reqwest::Error,
-    },
-
-    UnreadInboxRequestRejected {
-        source: NotSuccess,
-    },
-
-    UnableToDeserializeUnreadInboxRequest {
-        source: reqwest::Error,
-    },
-
-    UnreadInboxRequestFailed {
-        source: ApiError,
-    },
 }
 
-impl IsTransient for Error {
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Snafu)]
+pub enum CurrentUserError {
+    #[snafu(context(false))]
+    Common {
+        source: CommonError,
+    },
+
+    RequestDidNotHaveOneResult,
+}
+
+#[derive(Debug, Snafu)]
+pub struct UnreadNotificationsError(CommonError);
+
+impl IsTransient for UnreadNotificationsError {
+    fn is_transient(&self) -> bool {
+        self.0.is_transient()
+    }
+}
+
+#[derive(Debug, Snafu)]
+pub struct UnreadInboxError(CommonError);
+
+impl IsTransient for UnreadInboxError {
+    fn is_transient(&self) -> bool {
+        self.0.is_transient()
+    }
+}
+
+#[derive(Debug, Snafu)]
+pub enum CommonError {
+    UnableToExecuteRequest { source: reqwest::Error },
+
+    RequestRejected { source: NotSuccess },
+
+    UnableToDeserializeRequest { source: reqwest::Error },
+
+    RequestFailed { source: ApiError },
+}
+
+impl IsTransient for CommonError {
     fn is_transient(&self) -> bool {
         match self {
-            Self::UnableToExecuteUnreadNotificationRequest { source }
-            | Self::UnableToExecuteUnreadInboxRequest { source } => source.is_transient(),
+            Self::UnableToExecuteRequest { source } => source.is_transient(),
             _ => false,
         }
     }
 }
-
-type Result<T, E = Error> = std::result::Result<T, E>;

@@ -5,7 +5,7 @@ use crate::{
     poll_spawner::PollSpawnerHandle,
     pushover, GlobalStackOverflowConfig,
 };
-use snafu::{ResultExt, Snafu};
+use snafu::{futures::TryFutureExt, ResultExt, Snafu};
 use tracing::{trace, trace_span, Instrument};
 
 #[derive(Debug, Clone)]
@@ -166,22 +166,29 @@ impl ProxyNotificationsAuthFlow {
         let account_id = *account_id;
 
         async {
-            let notifications = so_client
-                .unread_notifications()
-                .await
-                .context(UnableToGetUnreadNotifications)?;
+            let (a, b) = futures::join!(
+                so_client
+                    .unread_notifications()
+                    .context(UnableToGetUnreadNotifications),
+                so_client.unread_inbox().context(UnableToGetUnreadInbox),
+            );
+
+            let a = a?.into_iter().map(|n| IncomingNotification {
+                account_id,
+                text: n.body,
+            });
+
+            let b = b?.into_iter().map(|i| IncomingNotification {
+                account_id,
+                text: i.body,
+            });
+
+            let notifications: Vec<_> = a.chain(b).collect();
+
             if notifications.is_empty() {
                 trace!("No notifications present");
                 return Ok(());
             };
-
-            let notifications = notifications
-                .into_iter()
-                .map(|n| IncomingNotification {
-                    account_id,
-                    text: n.body,
-                })
-                .collect();
 
             let new_notifications = db
                 .add_new_notifications(notifications)
@@ -227,6 +234,10 @@ pub enum Error {
     },
 
     UnableToGetUnreadNotifications {
+        source: crate::stack_overflow::Error,
+    },
+
+    UnableToGetUnreadInbox {
         source: crate::stack_overflow::Error,
     },
 

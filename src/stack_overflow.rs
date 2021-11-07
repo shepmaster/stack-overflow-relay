@@ -124,6 +124,33 @@ pub enum NotificationType {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Inbox {
+    pub body: String,
+    pub creation_date: Date,
+    pub is_unread: bool,
+    pub item_type: InboxType,
+    pub post_id: Option<PostId>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InboxType {
+    Comment,
+    ChatMessage,
+    NewAnswer,
+    CareersMessage,
+    CareersInvitations,
+    MetaQuestion,
+    PostNotice,
+    ModeratorMessage,
+    QuestionUpdate,
+    FollowedPostActivity,
+    SubcommunityEndorsement,
+    SubcommunityLeaderboard,
+    Other(String),
+}
+
+#[derive(Debug, Deserialize)]
 pub struct User {
     pub account_id: AccountId,
     pub user_id: UserId,
@@ -136,7 +163,8 @@ pub struct Config {
     client_id: String,
     client_secret: String,
     client_key: String,
-    unread: Url,
+    unread_notifications: Url,
+    unread_inbox: Url,
     current_user: Url,
 }
 
@@ -158,8 +186,12 @@ impl Config {
         let client_id = client_id.into();
         let client_secret = client_secret.into();
         let client_key = client_key.into();
-        let unread = Url::parse("https://api.stackexchange.com/2.2/me/notifications/unread")
-            .context(UnableToConfigureUnreadUrl)?;
+        let unread_notifications =
+            Url::parse("https://api.stackexchange.com/2.2/me/notifications/unread")
+                .context(UnableToConfigureUnreadNotificationsUrl)?;
+        let unread_inbox = Url::parse("https://api.stackexchange.com/2.3/me/inbox/unread")
+            .context(UnableToConfigureUnreadInboxUrl)?;
+
         let current_user = Url::parse("https://api.stackexchange.com/2.2/me")
             .context(UnableToConfigureCurrentUserUrl)?;
 
@@ -167,7 +199,8 @@ impl Config {
             client_id,
             client_secret,
             client_key,
-            unread,
+            unread_notifications,
+            unread_inbox,
             current_user,
         })
     }
@@ -195,6 +228,7 @@ impl Config {
 
 const SITE_STACKOVERFLOW: &str = "stackoverflow";
 const FILTER_DEFAULT: &str = "default";
+const FILTER_WITH_BODY: &str = "withbody";
 
 pub struct UnauthClient {
     client: reqwest::Client,
@@ -361,28 +395,68 @@ impl AuthClient {
             } = self;
 
             #[derive(Debug, Serialize)]
-            struct UnreadParams<'a> {
+            struct UnreadNotificationsParams<'a> {
                 filter: &'a str,
             }
 
-            let params = auth_config.auth_params(UnreadParams {
+            let params = auth_config.auth_params(UnreadNotificationsParams {
                 filter: FILTER_DEFAULT,
             });
 
             let r = client
-                .get(auth_config.config.unread.clone())
+                .get(auth_config.config.unread_notifications.clone())
                 .query(&params)
                 .send()
                 .await
-                .context(UnableToExecuteUnreadRequest)?
+                .context(UnableToExecuteUnreadNotificationRequest)?
                 .ensure_success()
                 .await
-                .context(UnreadRequestRejected)?
+                .context(UnreadNotificationRequestRejected)?
                 .json::<Wrapper<Notification>>()
                 .await
-                .context(UnableToDeserializeUnreadRequest)?
+                .context(UnableToDeserializeUnreadNotificationRequest)?
                 .into_result()
-                .context(UnreadRequestFailed)?
+                .context(UnreadNotificationRequestFailed)?
+                .trace_quota();
+
+            Ok(r.items)
+        }
+        .instrument(s)
+        .await
+    }
+
+    pub async fn unread_inbox(&self) -> Result<Vec<Inbox>> {
+        let s = trace_span!("unread_inbox");
+
+        async {
+            let Self {
+                client,
+                auth_config,
+            } = self;
+
+            #[derive(Debug, Serialize)]
+            struct UnreadInboxParams<'a> {
+                filter: &'a str,
+            }
+
+            let params = auth_config.auth_params(UnreadInboxParams {
+                filter: FILTER_WITH_BODY,
+            });
+
+            let r = client
+                .get(auth_config.config.unread_inbox.clone())
+                .query(&params)
+                .send()
+                .await
+                .context(UnableToExecuteUnreadInboxRequest)?
+                .ensure_success()
+                .await
+                .context(UnreadInboxRequestRejected)?
+                .json::<Wrapper<Inbox>>()
+                .await
+                .context(UnableToDeserializeUnreadInboxRequest)?
+                .into_result()
+                .context(UnreadInboxRequestFailed)?
                 .trace_quota();
 
             Ok(r.items)
@@ -464,7 +538,11 @@ pub enum Error {
         source: env::VarError,
     },
 
-    UnableToConfigureUnreadUrl {
+    UnableToConfigureUnreadNotificationsUrl {
+        source: url::ParseError,
+    },
+
+    UnableToConfigureUnreadInboxUrl {
         source: url::ParseError,
     },
 
@@ -506,19 +584,35 @@ pub enum Error {
 
     CurrentUserRequestDidNotHaveOneResult {},
 
-    UnableToExecuteUnreadRequest {
+    UnableToExecuteUnreadNotificationRequest {
         source: reqwest::Error,
     },
 
-    UnreadRequestRejected {
+    UnreadNotificationRequestRejected {
         source: NotSuccess,
     },
 
-    UnableToDeserializeUnreadRequest {
+    UnableToDeserializeUnreadNotificationRequest {
         source: reqwest::Error,
     },
 
-    UnreadRequestFailed {
+    UnreadNotificationRequestFailed {
+        source: ApiError,
+    },
+
+    UnableToExecuteUnreadInboxRequest {
+        source: reqwest::Error,
+    },
+
+    UnreadInboxRequestRejected {
+        source: NotSuccess,
+    },
+
+    UnableToDeserializeUnreadInboxRequest {
+        source: reqwest::Error,
+    },
+
+    UnreadInboxRequestFailed {
         source: ApiError,
     },
 }
@@ -526,7 +620,8 @@ pub enum Error {
 impl IsTransient for Error {
     fn is_transient(&self) -> bool {
         match self {
-            Self::UnableToExecuteUnreadRequest { source } => source.is_transient(),
+            Self::UnableToExecuteUnreadNotificationRequest { source }
+            | Self::UnableToExecuteUnreadInboxRequest { source } => source.is_transient(),
             _ => false,
         }
     }

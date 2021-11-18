@@ -17,7 +17,7 @@ dotenv = { version = "0.15.0", default-features = false }
 futures = { version = "0.3.9", default-features = false, features = [ "async-await", "std"] }
 hex = { version = "0.4.2", default-features = false, features = ["alloc"] }
 hyper = { version = "0.14.2", default-features = false }
-maud = { version = "0.22.2", default-features = false }
+maud = { version = "0.23.0", default-features = false }
 once_cell = { version = "1.5.2", default-features = false, features = ["std"] }
 parking_lot = { version = "0.11.1", default-features = false }
 rand = { version = "0.8.1", default-features = false, features = ["std", "std_rng"] }

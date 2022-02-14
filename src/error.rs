@@ -44,7 +44,7 @@ impl Breaker {
             }
             Err(e) if e.is_transient() => {
                 self.failure_count += 1;
-                ensure!(self.failure_count < 10, BreakerContext);
+                ensure!(self.failure_count < 10, BreakerSnafu);
                 warn!(
                     "{} sequential transient errors occurred, ignoring: {}",
                     self.failure_count, e,

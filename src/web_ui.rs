@@ -137,7 +137,7 @@ pub(crate) async fn serve(
                 set_pushover_user_flow
                     .set_pushover_user(account_id, UserKey(thing.thing))
                     .await
-                    .context(UnableToSetPushoverUser)?;
+                    .context(UnableToSetPushoverUserSnafu)?;
                 Ok::<_, Rejection>(redirect_to("/"))
             }
         });
@@ -155,7 +155,7 @@ fn session() -> warp::filters::BoxedFilter<(Session,)> {
             let sessions = SESSIONS.lock();
             sessions
                 .for_id(&id)
-                .context(NotAuthenticated)
+                .context(NotAuthenticatedSnafu)
                 .map_err(Rejection::from)
         })
         .boxed()
@@ -164,7 +164,7 @@ fn session() -> warp::filters::BoxedFilter<(Session,)> {
 fn auth_session() -> warp::filters::BoxedFilter<((AccountId, Session),)> {
     session()
         .and_then(|session: Session| async move {
-            let account_id = session.1.account_id.context(NotAuthenticated)?;
+            let account_id = session.1.account_id.context(NotAuthenticatedSnafu)?;
             Ok::<_, Rejection>((account_id, session))
         })
         .boxed()
@@ -241,8 +241,9 @@ impl warp::reject::Reject for Error {}
 
 mod oauth {
     use super::{
-        redirect_to, session, Result, Session, StateParameterMismatch, UnableToBuildRedirectUri,
-        UnableToCompleteRegistration, UnableToGetOauthEntryUrl, SESSIONS,
+        redirect_to, session, Result, Session, StateParameterMismatchSnafu,
+        UnableToBuildRedirectUriSnafu, UnableToCompleteRegistrationSnafu,
+        UnableToGetOauthEntryUrlSnafu, SESSIONS,
     };
     use crate::{GlobalConfig, GlobalStackOverflowConfig};
     use rand::{distributions::Alphanumeric, Rng, SeedableRng};
@@ -285,7 +286,7 @@ mod oauth {
 
                 let u = so_config
                     .oauth_entry_url(&redirect_uri, &state)
-                    .context(UnableToGetOauthEntryUrl)?;
+                    .context(UnableToGetOauthEntryUrlSnafu)?;
 
                 Ok::<_, Rejection>(redirect_to(u))
             })
@@ -313,7 +314,7 @@ mod oauth {
 
                     ensure!(
                         expected_state.map_or(false, |e| params.state == e),
-                        StateParameterMismatch
+                        StateParameterMismatchSnafu
                     );
 
                     let redirect_uri = redirect_uri(config)?.to_string();
@@ -321,7 +322,7 @@ mod oauth {
                     let account_id = flow
                         .register(&params.code, &redirect_uri)
                         .await
-                        .context(UnableToCompleteRegistration)?;
+                        .context(UnableToCompleteRegistrationSnafu)?;
 
                     session.set_account_id(account_id);
                     SESSIONS.lock().save(session);
@@ -336,7 +337,7 @@ mod oauth {
         config
             .public_uri
             .join("oauth/stackoverflow/complete")
-            .context(UnableToBuildRedirectUri)
+            .context(UnableToBuildRedirectUriSnafu)
     }
 }
 

@@ -16,10 +16,10 @@ pub struct Config {
 
 impl Config {
     pub fn from_environment() -> Result<Self> {
-        let token = env::var("PUSHOVER_API_TOKEN").context(UnknownApiToken)?;
+        let token = env::var("PUSHOVER_API_TOKEN").context(UnknownApiTokenSnafu)?;
 
         let notify_url = Url::parse("https://api.pushover.net/1/messages.json")
-            .context(UnableToConfigureNotifyUrl)?;
+            .context(UnableToConfigureNotifyUrlSnafu)?;
 
         Ok(Self { token, notify_url })
     }
@@ -69,7 +69,7 @@ impl Client {
                     .query(&n)
                     .send()
                     .await
-                    .context(UnableToSendNotification)?;
+                    .context(UnableToSendNotificationSnafu)?;
             }
 
             Ok(())

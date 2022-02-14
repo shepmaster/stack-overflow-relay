@@ -25,7 +25,7 @@ impl BootFlow {
         let registrations = db
             .registrations()
             .await
-            .context(UnableToLoadRegistrations)?;
+            .context(UnableToLoadRegistrationsSnafu)?;
         poll_spawner.start_many(registrations).await;
         Ok(())
     }
@@ -62,7 +62,7 @@ impl RegisterFlow {
         let resp = so_client
             .get_access_token(code, redirect_uri)
             .await
-            .context(UnableToGetOauthAccessToken)?;
+            .context(UnableToGetOauthAccessTokenSnafu)?;
 
         let so_client = so_client.into_auth_client(resp);
 
@@ -73,7 +73,7 @@ impl RegisterFlow {
 
         db.register(account_id, access_token.clone())
             .await
-            .context(UnableToPersistRegistration)?;
+            .context(UnableToPersistRegistrationSnafu)?;
         poll_spawner.start_polling(account_id, access_token).await;
 
         Ok(account_id)
@@ -95,7 +95,7 @@ impl SetPushoverUserFlow {
 
         db.set_pushover_user(account_id, user)
             .await
-            .context(UnableToPersistPushoverUser)?;
+            .context(UnableToPersistPushoverUserSnafu)?;
 
         Ok(())
     }
@@ -185,7 +185,7 @@ impl ProxyNotificationsAuthFlow {
             let new_notifications = db
                 .add_new_notifications(notifications)
                 .await
-                .context(UnableToPersistNotifications)?;
+                .context(UnableToPersistNotificationsSnafu)?;
             if new_notifications.is_empty() {
                 trace!("All notifications have been seen");
                 return Ok(());
@@ -194,7 +194,7 @@ impl ProxyNotificationsAuthFlow {
             pushover
                 .notify(new_notifications)
                 .await
-                .context(UnableToDeliverNotifications)?;
+                .context(UnableToDeliverNotificationsSnafu)?;
 
             Ok(())
         }

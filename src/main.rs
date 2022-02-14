@@ -39,18 +39,19 @@ async fn core() -> Result<()> {
     tracing_subscriber::fmt::init();
     dotenv::dotenv().ok();
 
-    let config = Config::from_environment().context(UnableToConfigure)?;
+    let config = Config::from_environment().context(UnableToConfigureSnafu)?;
     let config = &*Box::leak(Box::new(config));
 
     let so_config =
-        stack_overflow::Config::from_environment().context(UnableToConfigureStackOverflow)?;
+        stack_overflow::Config::from_environment().context(UnableToConfigureStackOverflowSnafu)?;
     let so_config = &*Box::leak(Box::new(so_config));
 
     let pushover_config =
-        pushover::Config::from_environment().context(UnableToConfigurePushover)?;
+        pushover::Config::from_environment().context(UnableToConfigurePushoverSnafu)?;
 
     let database_url = &config.database_url;
-    let conn = PgConnection::establish(database_url).context(UnableToConnect { database_url })?;
+    let conn =
+        PgConnection::establish(database_url).context(UnableToConnectSnafu { database_url })?;
 
     let (db, db_task) = database::Db::new(conn).spawn();
 
@@ -60,7 +61,7 @@ async fn core() -> Result<()> {
     let (poll_spawner, poll_spawner_task) = poll_spawner::PollSpawner::new(notify_flow).spawn();
 
     let mut boot_flow = flow::BootFlow::new(db.clone(), poll_spawner.clone());
-    boot_flow.boot().await.context(UnableToBoot)?;
+    boot_flow.boot().await.context(UnableToBootSnafu)?;
 
     let register_flow = flow::RegisterFlow::new(so_config, db.clone(), poll_spawner.clone());
     let set_pushover_user_flow = flow::SetPushoverUserFlow::new(db);
@@ -92,19 +93,19 @@ async fn core() -> Result<()> {
 
     tokio::select! {
         web_ui = web_ui => {
-            web_ui.context(WebUiFailed)
+            web_ui.context(WebUiFailedSnafu)
         }
         caffeine_task = caffeine_task => {
-            caffeine_task.context(CaffeineFailed)?;
-            CaffeineExited.fail()
+            caffeine_task.context(CaffeineFailedSnafu)?;
+            CaffeineExitedSnafu.fail()
         }
         poll_spawner_task = poll_spawner_task => {
-            poll_spawner_task.context(PollSpawnerFailed)?.context(PollSpawnerErrored)?;
-            PollSpawnerExited.fail()
+            poll_spawner_task.context(PollSpawnerFailedSnafu)?.context(PollSpawnerErroredSnafu)?;
+            PollSpawnerExitedSnafu.fail()
         }
         db_task = db_task => {
-            db_task.context(DatabaseFailed)?;
-            DatabaseExited.fail()
+            db_task.context(DatabaseFailedSnafu)?;
+            DatabaseExitedSnafu.fail()
         }
     }
 }

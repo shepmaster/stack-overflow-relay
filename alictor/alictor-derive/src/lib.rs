@@ -123,7 +123,7 @@ pub fn alictor(
                 // rx.await below. There's no reason to check for the
                 // same failure twice.
                 let _ = alictor::reexport::futures::SinkExt::send(&mut self.0, #command_enum_name::#name(tx, #(#arg_names),*)).await;
-                alictor::reexport::snafu::ResultExt::context(rx.await, alictor::ActorContext)
+                alictor::reexport::snafu::ResultExt::context(rx.await, alictor::ActorSnafu)
             }
 
             pub async fn #name(&mut self, #(#args),*) -> #ret_ty {

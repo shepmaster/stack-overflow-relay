@@ -52,7 +52,7 @@ impl PollSpawner {
                     }
 
                     child = children.select_next_some() => {
-                        match child.context(ChildFailed)? {
+                        match child.context(ChildFailedSnafu)? {
                             Ok(v) => v?,
                             Err(_) => warn!("Second worker started"),
                         }
@@ -78,8 +78,8 @@ async fn poll_one_account(
         loop {
             let attempt = breaker.run(flow.proxy());
 
-            if let Some(attempt) = attempt.await.context(TooManyTransientFailures)? {
-                attempt.context(UnableToProxyNotifications)?;
+            if let Some(attempt) = attempt.await.context(TooManyTransientFailuresSnafu)? {
+                attempt.context(UnableToProxyNotificationsSnafu)?;
             }
 
             time::sleep(Duration::from_secs(60)).await;

@@ -16,18 +16,18 @@ pub struct Config {
 
 impl Config {
     pub fn from_environment() -> Result<Self> {
-        let database_url = env::var("DATABASE_URL").context(UnknownDatabaseUrl)?;
-        let uri = env::var("WEB_PUBLIC_URI").context(UnknownWebPublicUri)?;
-        let address = env::var("WEB_LISTEN_ADDRESS").context(UnknownWebListenAddress)?;
+        let database_url = env::var("DATABASE_URL").context(UnknownDatabaseUrlSnafu)?;
+        let uri = env::var("WEB_PUBLIC_URI").context(UnknownWebPublicUriSnafu)?;
+        let address = env::var("WEB_LISTEN_ADDRESS").context(UnknownWebListenAddressSnafu)?;
         let port = env::var("WEB_LISTEN_PORT").or_else(|_| env::var("PORT"));
-        let port = port.context(UnknownWebListenPort)?;
+        let port = port.context(UnknownWebListenPortSnafu)?;
         let caffeine_interval = env::var("PREVENT_HEROKU_SLEEP").ok();
 
-        let public_uri = Url::parse(&uri).context(InvalidWebPublicUri { uri })?;
+        let public_uri = Url::parse(&uri).context(InvalidWebPublicUriSnafu { uri })?;
         let address: IpAddr = address
             .parse()
-            .context(InvalidWebListenAddress { address })?;
-        let port = port.parse().context(InvalidWebListenPort { port })?;
+            .context(InvalidWebListenAddressSnafu { address })?;
+        let port = port.parse().context(InvalidWebListenPortSnafu { port })?;
         let listen_address = (address, port).into();
         let caffeine_interval = caffeine_interval
             .and_then(|i| i.parse().ok())

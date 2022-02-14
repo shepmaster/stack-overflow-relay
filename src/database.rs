@@ -29,7 +29,7 @@ impl Db {
         let r = registrations::table
             .select((registrations::account_id, registrations::access_token))
             .load(conn)
-            .context(UnableToQueryRegistrations)?;
+            .context(UnableToQueryRegistrationsSnafu)?;
 
         Ok(r.into_iter()
             .map(|(id, token)| (AccountId(id), AccessToken(token)))
@@ -53,7 +53,7 @@ impl Db {
             .do_update()
             .set(dsl::access_token.eq(dsl::access_token)) // should this be `excluded`?
             .execute(conn)
-            .context(UnableToInsertRegistration)?;
+            .context(UnableToInsertRegistrationSnafu)?;
 
         Ok(())
     }
@@ -75,7 +75,7 @@ impl Db {
             .do_update()
             .set(dsl::key.eq(excluded(dsl::key)))
             .execute(conn)
-            .context(UnableToInsertPushoverUser)?;
+            .context(UnableToInsertPushoverUserSnafu)?;
 
         Ok(())
     }
@@ -110,7 +110,7 @@ impl Db {
                 .returning(n::id)
                 .log_query()
                 .get_results::<i32>(conn)
-                .context(UnableToInsertNotifications)?;
+                .context(UnableToInsertNotificationsSnafu)?;
 
             trace!("Inserted {} new notifications", ids.len());
 
@@ -120,7 +120,7 @@ impl Db {
                 .filter(n::id.eq(any(ids)))
                 .log_query()
                 .load(conn)
-                .context(UnableToQueryNotifications)
+                .context(UnableToQueryNotificationsSnafu)
         })?;
 
         Ok(raw_notifications
@@ -154,18 +154,18 @@ where
     let transaction_manager = conn.transaction_manager();
     transaction_manager
         .begin_transaction(conn)
-        .context(TransactionFailed)?;
+        .context(TransactionFailedSnafu)?;
     match f(conn) {
         Ok(value) => {
             transaction_manager
                 .commit_transaction(conn)
-                .context(TransactionFailed)?;
+                .context(TransactionFailedSnafu)?;
             Ok(value)
         }
         Err(e) => {
             transaction_manager
                 .rollback_transaction(conn)
-                .context(TransactionFailed)?;
+                .context(TransactionFailedSnafu)?;
             Err(e)
         }
     }

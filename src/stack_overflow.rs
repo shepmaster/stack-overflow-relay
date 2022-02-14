@@ -170,10 +170,10 @@ pub struct Config {
 
 impl Config {
     pub fn from_environment() -> Result<Self> {
-        let client_id = env::var("STACK_OVERFLOW_CLIENT_ID").context(UnknownClientId)?;
+        let client_id = env::var("STACK_OVERFLOW_CLIENT_ID").context(UnknownClientIdSnafu)?;
         let client_secret =
-            env::var("STACK_OVERFLOW_CLIENT_SECRET").context(UnknownClientSecret)?;
-        let client_key = env::var("STACK_OVERFLOW_CLIENT_KEY").context(UnknownClientKey)?;
+            env::var("STACK_OVERFLOW_CLIENT_SECRET").context(UnknownClientSecretSnafu)?;
+        let client_key = env::var("STACK_OVERFLOW_CLIENT_KEY").context(UnknownClientKeySnafu)?;
 
         Self::new(client_id, client_secret, client_key)
     }
@@ -188,12 +188,12 @@ impl Config {
         let client_key = client_key.into();
         let unread_notifications =
             Url::parse("https://api.stackexchange.com/2.2/me/notifications/unread")
-                .context(UnableToConfigureUnreadNotificationsUrl)?;
+                .context(UnableToConfigureUnreadNotificationsUrlSnafu)?;
         let unread_inbox = Url::parse("https://api.stackexchange.com/2.3/me/inbox/unread")
-            .context(UnableToConfigureUnreadInboxUrl)?;
+            .context(UnableToConfigureUnreadInboxUrlSnafu)?;
 
         let current_user = Url::parse("https://api.stackexchange.com/2.2/me")
-            .context(UnableToConfigureCurrentUserUrl)?;
+            .context(UnableToConfigureCurrentUserUrlSnafu)?;
 
         Ok(Config {
             client_id,
@@ -215,7 +215,7 @@ impl Config {
                 ("state", state),
             ],
         )
-        .context(UnableToBuildOauthEntryUrl)
+        .context(UnableToBuildOauthEntryUrlSnafu)
     }
 
     pub fn into_unauth_client(self) -> UnauthClient {
@@ -279,13 +279,13 @@ impl UnauthClient {
             .form(&params)
             .send()
             .await
-            .context(UnableToExecuteAccessTokenRequest)?
+            .context(UnableToExecuteAccessTokenRequestSnafu)?
             .ensure_success()
             .await
-            .context(AccessTokenRequestRejected)?
+            .context(AccessTokenRequestRejectedSnafu)?
             .json::<AccessTokenResponse>()
             .await
-            .context(UnableToDeserializeAccessTokenRequest)?;
+            .context(UnableToDeserializeAccessTokenRequestSnafu)?;
 
         Ok(res.access_token)
     }
@@ -367,18 +367,18 @@ impl AuthClient {
                 .query(&params)
                 .send()
                 .await
-                .context(UnableToExecuteRequest)?
+                .context(UnableToExecuteRequestSnafu)?
                 .ensure_success()
                 .await
-                .context(RequestRejected)?
+                .context(RequestRejectedSnafu)?
                 .json::<Wrapper<User>>()
                 .await
-                .context(UnableToDeserializeRequest)?
+                .context(UnableToDeserializeRequestSnafu)?
                 .into_result()
-                .context(RequestFailed)?
+                .context(RequestFailedSnafu)?
                 .trace_quota()
                 .into_singleton()
-                .context(RequestDidNotHaveOneResult)
+                .context(RequestDidNotHaveOneResultSnafu)
         }
         .instrument(s)
         .await
@@ -409,15 +409,15 @@ impl AuthClient {
                 .query(&params)
                 .send()
                 .await
-                .context(UnableToExecuteRequest)?
+                .context(UnableToExecuteRequestSnafu)?
                 .ensure_success()
                 .await
-                .context(RequestRejected)?
+                .context(RequestRejectedSnafu)?
                 .json::<Wrapper<Notification>>()
                 .await
-                .context(UnableToDeserializeRequest)?
+                .context(UnableToDeserializeRequestSnafu)?
                 .into_result()
-                .context(RequestFailed)?
+                .context(RequestFailedSnafu)?
                 .trace_quota();
 
             Ok(r.items)
@@ -449,15 +449,15 @@ impl AuthClient {
                 .query(&params)
                 .send()
                 .await
-                .context(UnableToExecuteRequest)?
+                .context(UnableToExecuteRequestSnafu)?
                 .ensure_success()
                 .await
-                .context(RequestRejected)?
+                .context(RequestRejectedSnafu)?
                 .json::<Wrapper<Inbox>>()
                 .await
-                .context(UnableToDeserializeRequest)?
+                .context(UnableToDeserializeRequestSnafu)?
                 .into_result()
-                .context(RequestFailed)?
+                .context(RequestFailedSnafu)?
                 .trace_quota();
 
             Ok(r.items)
@@ -496,7 +496,7 @@ impl EnsureSuccess for reqwest::Response {
                 let headers = format!("{:?}", self.headers());
                 let body = self.bytes().await.unwrap_or_default();
 
-                NotSuccessContext {
+                NotSuccessSnafu {
                     status,
                     res,
                     headers,

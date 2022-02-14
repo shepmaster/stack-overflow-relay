@@ -164,7 +164,7 @@ fn session() -> warp::filters::BoxedFilter<(Session,)> {
 fn auth_session() -> warp::filters::BoxedFilter<((AccountId, Session),)> {
     session()
         .and_then(|session: Session| async move {
-            let account_id = session.1.account_id.clone().context(NotAuthenticated)?;
+            let account_id = session.1.account_id.context(NotAuthenticated)?;
             Ok::<_, Rejection>((account_id, session))
         })
         .boxed()
@@ -287,7 +287,7 @@ mod oauth {
                     .oauth_entry_url(&redirect_uri, &state)
                     .context(UnableToGetOauthEntryUrl)?;
 
-                Ok::<_, Rejection>(redirect_to(u.to_string()))
+                Ok::<_, Rejection>(redirect_to(u))
             })
             .boxed()
     }
@@ -326,7 +326,7 @@ mod oauth {
                     session.set_account_id(account_id);
                     SESSIONS.lock().save(session);
 
-                    Ok::<_, warp::Rejection>(redirect_to(config.public_uri.to_string()))
+                    Ok::<_, warp::Rejection>(redirect_to(config.public_uri.clone()))
                 }
             })
             .boxed()

@@ -265,7 +265,6 @@ impl UnauthClient {
         #[derive(Debug, Deserialize)]
         struct AccessTokenResponse {
             access_token: AccessToken,
-            expires: Option<Duration>,
         }
 
         let params = AccessTokenParams {

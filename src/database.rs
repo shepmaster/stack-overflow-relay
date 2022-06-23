@@ -2,7 +2,11 @@ use crate::{
     domain::{IncomingNotification, OutgoingNotification, UserKey},
     stack_overflow::{AccessToken, AccountId},
 };
-use diesel::{connection::TransactionManager, dsl::any, pg::upsert::excluded, prelude::*};
+use diesel::{
+    connection::{AnsiTransactionManager, TransactionManager},
+    prelude::*,
+    upsert::excluded,
+};
 use snafu::{ResultExt, Snafu};
 use tracing::{trace, trace_span};
 
@@ -21,7 +25,7 @@ impl Db {
 
 #[alictor::alictor(kind = blocking)]
 impl Db {
-    fn registrations(&self) -> Result<Vec<(AccountId, AccessToken)>> {
+    fn registrations(&mut self) -> Result<Vec<(AccountId, AccessToken)>> {
         use schema::registrations;
 
         let Self { conn } = self;
@@ -36,7 +40,7 @@ impl Db {
             .collect())
     }
 
-    fn register(&self, account_id: AccountId, access_token: AccessToken) -> Result<()> {
+    fn register(&mut self, account_id: AccountId, access_token: AccessToken) -> Result<()> {
         use models::Registration;
         use schema::registrations::dsl;
 
@@ -58,7 +62,7 @@ impl Db {
         Ok(())
     }
 
-    fn set_pushover_user(&self, account_id: AccountId, user_key: UserKey) -> Result<()> {
+    fn set_pushover_user(&mut self, account_id: AccountId, user_key: UserKey) -> Result<()> {
         use models::PushoverUser;
         use schema::pushover_users::dsl;
 
@@ -81,7 +85,7 @@ impl Db {
     }
 
     fn add_new_notifications(
-        &self,
+        &mut self,
         notifications: Vec<IncomingNotification>,
     ) -> Result<Vec<OutgoingNotification>> {
         use models::NewNotification;
@@ -117,7 +121,7 @@ impl Db {
             p::table
                 .inner_join(n::table.on(n::account_id.eq(p::account_id)))
                 .select((p::key, n::text))
-                .filter(n::id.eq(any(ids)))
+                .filter(n::id.eq_any(ids))
                 .log_query()
                 .load(conn)
                 .context(UnableToQueryNotificationsSnafu)
@@ -147,25 +151,18 @@ where
     }
 }
 
-fn transaction<'a, T, F>(conn: &'a PgConnection, f: F) -> Result<T>
+fn transaction<T, F>(conn: &mut PgConnection, f: F) -> Result<T>
 where
-    F: FnOnce(&'a PgConnection) -> Result<T>,
+    F: FnOnce(&mut PgConnection) -> Result<T>,
 {
-    let transaction_manager = conn.transaction_manager();
-    transaction_manager
-        .begin_transaction(conn)
-        .context(TransactionFailedSnafu)?;
+    AnsiTransactionManager::begin_transaction(conn).context(TransactionFailedSnafu)?;
     match f(conn) {
         Ok(value) => {
-            transaction_manager
-                .commit_transaction(conn)
-                .context(TransactionFailedSnafu)?;
+            AnsiTransactionManager::commit_transaction(conn).context(TransactionFailedSnafu)?;
             Ok(value)
         }
         Err(e) => {
-            transaction_manager
-                .rollback_transaction(conn)
-                .context(TransactionFailedSnafu)?;
+            AnsiTransactionManager::rollback_transaction(conn).context(TransactionFailedSnafu)?;
             Err(e)
         }
     }

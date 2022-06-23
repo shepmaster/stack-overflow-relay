@@ -12,7 +12,7 @@ vergen = { version = "7.0.0", default-features = false, features = ["git"] }
 [dependencies]
 alictor = { path = "alictor", default-features = false }
 
-diesel = { version = "1.4.5", default-features = false, features = ["postgres"] }
+diesel = { git = "https://github.com/diesel-rs/diesel", default-features = false, features = ["postgres"] }
 dotenv = { version = "0.15.0", default-features = false }
 futures = { version = "0.3.9", default-features = false, features = [ "async-await", "std"] }
 hex = { version = "0.4.2", default-features = false, features = ["alloc"] }

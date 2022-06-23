@@ -13,7 +13,7 @@ pub struct PushoverUser {
 }
 
 #[derive(Debug, Insertable)]
-#[table_name = "notifications"]
+#[diesel(table_name = notifications)]
 pub struct NewNotification {
     pub account_id: i32,
     pub text: String,

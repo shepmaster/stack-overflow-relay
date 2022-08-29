@@ -122,8 +122,8 @@ pub(crate) async fn serve(
     let root = auth_root.or(unauth_root);
 
     #[derive(Deserialize)]
-    struct Thing {
-        thing: String,
+    struct PushoverConfiguration {
+        key: String,
     }
 
     let user_me_post = warp::path!("user" / "me")
@@ -131,11 +131,11 @@ pub(crate) async fn serve(
         .and(warp::post())
         .and(body::form())
         .and(body::content_length_limit(1024))
-        .and_then(move |(account_id, _), thing: Thing| {
+        .and_then(move |(account_id, _), config: PushoverConfiguration| {
             let mut set_pushover_user_flow = set_pushover_user_flow.clone();
             async move {
                 set_pushover_user_flow
-                    .set_pushover_user(account_id, UserKey(thing.thing))
+                    .set_pushover_user(account_id, UserKey(config.key))
                     .await
                     .context(UnableToSetPushoverUserSnafu)?;
                 Ok::<_, Rejection>(redirect_to("/"))
@@ -356,7 +356,7 @@ mod html {
         page(|| {
             html! {
                 form action="/user/me" method="post" {
-                    input type="text" name="thing" placeholder="the thing";
+                    input type="text" name="key" placeholder="pushover key";
                     input type="submit";
                 }
             }

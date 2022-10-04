@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM rust:latest AS builder
 
-RUN cargo install diesel_cli --no-default-features --features "postgres" --version "2.0.0-rc.1"
+RUN cargo install diesel_cli --no-default-features --features "postgres" --version "2.0.0"
 
 ARG SOURCE_VERSION
 

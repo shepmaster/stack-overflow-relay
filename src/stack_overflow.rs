@@ -492,7 +492,7 @@ impl EnsureSuccess for reqwest::Response {
         async {
             let status = self.status();
             if !status.is_success() {
-                let res = format!("{:?}", self);
+                let res = format!("{self:?}");
                 let headers = format!("{:?}", self.headers());
                 let body = self.bytes().await.unwrap_or_default();
 

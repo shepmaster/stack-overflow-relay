@@ -204,6 +204,7 @@ impl ProxyNotificationsAuthFlow {
 }
 
 #[derive(Debug, Snafu)]
+#[allow(clippy::enum_variant_names)]
 pub enum Error {
     UnableToLoadRegistrations {
         source: crate::database::Error,

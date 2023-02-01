@@ -35,7 +35,7 @@ impl SessionId {
     }
 
     fn to_cookie(&self) -> String {
-        hex::encode(&self.0)
+        hex::encode(self.0)
     }
 }
 
@@ -173,9 +173,7 @@ fn auth_session() -> warp::filters::BoxedFilter<((AccountId, Session),)> {
 fn redirect_to(location: impl AsRef<str>) -> impl Reply {
     let r = reply::reply();
     let r = reply::with_header(r, header::LOCATION, location.as_ref());
-    let r = reply::with_status(r, StatusCode::TEMPORARY_REDIRECT);
-
-    r
+    reply::with_status(r, StatusCode::TEMPORARY_REDIRECT)
 }
 
 async fn report_invalid(r: Rejection) -> Result<impl Reply, Infallible> {

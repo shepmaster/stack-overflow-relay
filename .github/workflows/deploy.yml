@@ -14,4 +14,4 @@ jobs:
       steps:
         - uses: actions/checkout@v3
         - uses: superfly/flyctl-actions/setup-flyctl@master
-        - run: flyctl deploy --remote-only --build-arg SOURCE_VERSION="${{ github.sha }}"
+        - run: flyctl deploy --remote-only --build-arg VERGEN_GIT_SHA="${{ github.sha }}"

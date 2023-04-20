@@ -3,7 +3,7 @@ FROM rust:latest AS builder
 
 RUN cargo install diesel_cli --no-default-features --features "postgres" --version "2.0.0"
 
-ARG SOURCE_VERSION
+ARG VERGEN_GIT_SHA
 
 # Pre-build the dependencies
 RUN cargo new app

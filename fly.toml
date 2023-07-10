@@ -1,9 +1,12 @@
-# fly.toml file generated for stack-overflow-relay on 2022-08-26T11:29:44-04:00
+# fly.toml app configuration file generated for stack-overflow-relay on 2023-07-10T17:23:38-04:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
 app = "stack-overflow-relay"
+primary_region = "iad"
 kill_signal = "SIGINT"
-kill_timeout = 5
-processes = []
+kill_timeout = "5s"
 
 [build]
 dockerfile = "Dockerfile"
@@ -12,15 +15,12 @@ dockerfile = "Dockerfile"
 release_command = "/app/diesel migration run"
 
 [experimental]
-allowed_public_ports = []
 auto_rollback = true
 
 [[services]]
-http_checks = []
 internal_port = 8080
 processes = ["app"]
 protocol = "tcp"
-script_checks = []
 
 [services.concurrency]
 hard_limit = 25

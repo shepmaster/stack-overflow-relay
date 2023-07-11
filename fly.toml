@@ -11,8 +11,8 @@ kill_timeout = "5s"
 [build]
 dockerfile = "Dockerfile"
 
-[deploy]
-release_command = "/app/diesel migration run"
+[processes]
+app = "/bin/sh -c '/app/diesel migration run && /app/stack-overflow-relay'"
 
 [experimental]
 auto_rollback = true

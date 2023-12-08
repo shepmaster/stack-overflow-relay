@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM rust:latest AS builder
+FROM rust:bullseye AS builder
 
 RUN cargo install diesel_cli --no-default-features --features "postgres" --version "2.0.0"
 
